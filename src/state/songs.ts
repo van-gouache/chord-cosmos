@@ -3,7 +3,7 @@
  * into a configurable number of steps. A step holds one chord (or a rest).
  */
 
-import { tryParseChord } from '../theory/chords'
+import { displayChordSymbol, tryParseChord } from '../theory/chords'
 import {
   customShapeFromFingering,
   fingeringFromCustomTab,
@@ -1032,13 +1032,13 @@ export function exportSong(song: Song): string {
     if (section.note) lines.push(`  ${section.note}`)
     section.bars.forEach((bar, barIndex) => {
       const cells = bar.slots.map((slot) =>
-        slot ? `${slot.chordSymbol} ${slot.tab}` : '—'
+        slot ? `${displayChordSymbol(slot.chordSymbol)} ${slot.tab}` : '—'
       )
       lines.push(
         `  m${barIndex + 1} (${bar.slots.length}). ${cells.join('  |  ')}`
       )
       bar.slots.forEach((slot) => {
-        if (slot?.note) lines.push(`      ${slot.chordSymbol}: ${slot.note}`)
+        if (slot?.note) lines.push(`      ${displayChordSymbol(slot.chordSymbol)}: ${slot.note}`)
       })
     })
     return [...lines, '']

@@ -11,6 +11,7 @@ import {
   tabLabel,
 } from '../theory/fretboard'
 import { midiToOctave } from '../theory/pitch'
+import { displayChordSymbol } from '../theory/chords'
 import {
   inversionLabel,
   inversionOrdinal,
@@ -271,7 +272,7 @@ export function VoicingPicker({
           />
           <div className="min-w-[180px] flex-1">
             <p className="text-lg font-bold text-white">
-              {displaySelected.chordSymbol}{' '}
+              {displayChordSymbol(displaySelected.chordSymbol)}{' '}
               <span className="text-sm font-normal text-nebula-400">
                 {displaySelected.groupId} · {inversionOrdinal(displaySelected.inversion)}
               </span>

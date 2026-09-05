@@ -51,7 +51,12 @@ export function ChordInput({
     setQualityHighlight(false)
   }
 
-  const selectedSuffix = qualityHighlight ? impliedSuffix : null
+  const displaySuffix = chord ? chord.symbol.slice(chord.rootName.length) : ''
+  const selectedSuffix = qualityHighlight
+    ? mode === 'triads'
+      ? impliedSuffix
+      : displaySuffix
+    : null
   const summaryTones = triad ?? chord?.tones ?? []
   const summaryLabel =
     triad != null
@@ -86,7 +91,7 @@ export function ChordInput({
               setQualityHighlight(true)
               onChange(e.target.value)
             }}
-            placeholder={mode === 'triads' ? 'Em' : 'E-7'}
+            placeholder={mode === 'triads' ? 'E-' : 'E-7'}
             autoComplete="off"
             autoCapitalize="off"
             spellCheck={false}

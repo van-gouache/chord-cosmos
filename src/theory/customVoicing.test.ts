@@ -28,7 +28,7 @@ describe('custom fretboard voicings', () => {
   it('names a four-note custom set with interval tokens', () => {
     const fingering = fingeringFromCustomStrings([null, 3, 5, 3, 5, null])
     expect(fingering).not.toBeNull()
-    expect(customChordSymbol('C', fingering!)).toBe('C[R,3,5,b7]')
+    expect(customChordSymbol('C', fingering!)).toBe('C7')
   })
 
   it('round-trips a wide shape through tab', () => {

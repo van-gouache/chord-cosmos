@@ -22,10 +22,10 @@ export const QUALITY_GROUPS: QualityGroup[] = [
     heading: 'Quality',
     chips: [
       { label: 'maj', suffix: '', title: 'major triad — completed as a 6th' },
-      { label: 'm', suffix: 'm', title: 'minor triad — completed as a minor 7th' },
+      { label: '-', suffix: '-', title: 'minor triad — completed as a minor 7th' },
       { label: '+', suffix: '+', title: 'augmented triad — completed as 7♯5' },
       { label: '°', suffix: '°', title: 'diminished triad — completed as °7' },
-      { label: 'Δ7', suffix: 'maj7', title: 'major 7th — R 3 5 7' },
+      { label: 'Δ7', suffix: 'Δ7', title: 'major 7th — R 3 5 7' },
       { label: '-7', suffix: '-7', title: 'minor 7th — R ♭3 5 ♭7' },
       { label: '7', suffix: '7', title: 'dominant 7th — R 3 5 ♭7' },
       { label: 'ø7', suffix: 'ø7', title: 'half-diminished — R ♭3 ♭5 ♭7' },
@@ -46,7 +46,7 @@ export const QUALITY_GROUPS: QualityGroup[] = [
       { label: '7sus2', suffix: '7sus2', title: 'R 2 5 ♭7' },
       { label: '7sus4', suffix: '7sus4', title: 'R 4 5 ♭7' },
       { label: '9sus4', suffix: '9sus4', title: 'R 4 ♭7 9' },
-      { label: '7sus♭9', suffix: '7sus4b9', title: 'Phrygian — R 4 ♭7 ♭9' },
+      { label: '7sus♭9', suffix: '7sus4♭9', title: 'Phrygian — R 4 ♭7 ♭9' },
     ],
   },
   {
@@ -55,39 +55,39 @@ export const QUALITY_GROUPS: QualityGroup[] = [
       { label: '9', suffix: '9', title: 'dominant 9th — R 3 ♭7 9' },
       { label: '11', suffix: '11', title: 'dominant 11th — R 3 ♭7 11' },
       { label: '13', suffix: '13', title: 'dominant 13th — R 3 ♭7 13' },
-      { label: 'Δ9', suffix: 'maj9', title: 'major 9th — R 3 7 9' },
-      { label: 'Δ13', suffix: 'maj13', title: 'major 13th — R 3 7 13' },
+      { label: 'Δ9', suffix: 'Δ9', title: 'major 9th — R 3 7 9' },
+      { label: 'Δ13', suffix: 'Δ13', title: 'major 13th — R 3 7 13' },
       { label: '-9', suffix: '-9', title: 'minor 9th — R ♭3 ♭7 9' },
       { label: '-11', suffix: '-11', title: 'minor 11th — R ♭3 ♭7 11' },
       { label: '-13', suffix: '-13', title: 'minor 13th — R ♭3 ♭7 13' },
       { label: 'add9', suffix: 'add9', title: 'add 9 — R 3 5 9' },
       { label: '-add9', suffix: '-add9', title: 'minor add 9 — R ♭3 5 9' },
-      { label: 'Δ7♯11', suffix: 'maj7#11', title: 'Lydian major 7th — R 3 7 ♯11' },
-      { label: 'Δ7♯5', suffix: 'maj7#5', title: 'augmented major 7th — R 3 ♯5 7' },
-      { label: 'Δ7♭5', suffix: 'maj7b5', title: 'major 7th flat five — R 3 ♭5 7' },
-      { label: '7♭5', suffix: '7b5', title: 'R 3 ♭5 ♭7' },
-      { label: '7♯5', suffix: '7#5', title: 'R 3 ♯5 ♭7' },
-      { label: '7♭9', suffix: '7b9', title: 'R 3 ♭7 ♭9' },
-      { label: '7♯9', suffix: '7#9', title: 'Hendrix — R 3 ♭7 ♯9' },
-      { label: '7♯11', suffix: '7#11', title: 'R 3 ♭7 ♯11' },
-      { label: '7♭13', suffix: '7b13', title: 'R 3 ♭7 ♭13' },
+      { label: 'Δ7♯11', suffix: 'Δ7♯11', title: 'Lydian major 7th — R 3 7 ♯11' },
+      { label: 'Δ7♯5', suffix: 'Δ7♯5', title: 'augmented major 7th — R 3 ♯5 7' },
+      { label: 'Δ7♭5', suffix: 'Δ7♭5', title: 'major 7th flat five — R 3 ♭5 7' },
+      { label: '7♭5', suffix: '7♭5', title: 'R 3 ♭5 ♭7' },
+      { label: '7♯5', suffix: '7♯5', title: 'R 3 ♯5 ♭7' },
+      { label: '7♭9', suffix: '7♭9', title: 'R 3 ♭7 ♭9' },
+      { label: '7♯9', suffix: '7♯9', title: 'Hendrix — R 3 ♭7 ♯9' },
+      { label: '7♯11', suffix: '7♯11', title: 'R 3 ♭7 ♯11' },
+      { label: '7♭13', suffix: '7♭13', title: 'R 3 ♭7 ♭13' },
       { label: '7alt', suffix: '7alt', title: 'altered — R 3 ♭9 ♯5' },
-      { label: '9♯11', suffix: '9#11', title: 'R 3 ♭7 ♯11' },
-      { label: '13♭9', suffix: '13b9', title: 'R 3 13 ♭9' },
-      { label: '13♯11', suffix: '13#11', title: 'R 3 13 ♯11' },
-      { label: '-7♯5', suffix: '-7#5', title: 'R ♭3 ♯5 ♭7' },
-      { label: '-9♭5', suffix: '-9b5', title: 'half-diminished 9th — R ♭3 ♭5 ♭7' },
+      { label: '9♯11', suffix: '9♯11', title: 'R 3 ♭7 ♯11' },
+      { label: '13♭9', suffix: '13♭9', title: 'R 3 13 ♭9' },
+      { label: '13♯11', suffix: '13♯11', title: 'R 3 13 ♯11' },
+      { label: '-7♯5', suffix: '-7♯5', title: 'R ♭3 ♯5 ♭7' },
+      { label: '-9♭5', suffix: '-9♭5', title: 'half-diminished 9th — R ♭3 ♭5 ♭7' },
     ],
   },
   {
     heading: 'Altered',
     chips: [
-      { label: '7♭9♭5', suffix: '7b9b5', title: 'R 3 ♭9 ♭5' },
-      { label: '7♭9♯5', suffix: '7b9#5', title: 'R 3 ♭9 ♯5' },
-      { label: '7♯9♭5', suffix: '7#9b5', title: 'R 3 ♯9 ♭5' },
-      { label: '7♯9♯5', suffix: '7#9#5', title: 'R 3 ♯9 ♯5' },
-      { label: '7♭9♯11', suffix: '7b9#11', title: 'R 3 ♭9 ♯11' },
-      { label: '7♯9♯11', suffix: '7#9#11', title: 'R 3 ♯9 ♯11' },
+      { label: '7♭9♭5', suffix: '7♭9♭5', title: 'R 3 ♭9 ♭5' },
+      { label: '7♭9♯5', suffix: '7♭9♯5', title: 'R 3 ♭9 ♯5' },
+      { label: '7♯9♭5', suffix: '7♯9♭5', title: 'R 3 ♯9 ♭5' },
+      { label: '7♯9♯5', suffix: '7♯9♯5', title: 'R 3 ♯9 ♯5' },
+      { label: '7♭9♯11', suffix: '7♭9♯11', title: 'R 3 ♭9 ♯11' },
+      { label: '7♯9♯11', suffix: '7♯9♯11', title: 'R 3 ♯9 ♯11' },
     ],
   },
 ]
@@ -102,7 +102,7 @@ export const TRIAD_QUALITY_GROUPS: QualityGroup[] = [
     heading: 'Quality',
     chips: [
       { label: 'maj', suffix: '', title: 'major triad — R 3 5' },
-      { label: 'm', suffix: 'm', title: 'minor triad — R ♭3 5' },
+      { label: '-', suffix: '-', title: 'minor triad — R ♭3 5' },
       { label: '+', suffix: '+', title: 'augmented triad — R 3 ♯5' },
       { label: '°', suffix: '°', title: 'diminished triad — R ♭3 ♭5' },
     ],
@@ -122,7 +122,7 @@ export const TRIAD_QUALITY_CHIPS: QualityChip[] = TRIAD_QUALITY_GROUPS.flatMap(
 
 const TRIAD_SUFFIX_BY_SEMITONES: Record<string, string> = {
   '0,4,7': '',
-  '0,3,7': 'm',
+  '0,3,7': '-',
   '0,4,8': '+',
   '0,3,6': '°',
   '0,2,7': 'sus2',
@@ -131,11 +131,110 @@ const TRIAD_SUFFIX_BY_SEMITONES: Record<string, string> = {
 
 const TRIAD_LABEL_BY_SUFFIX: Record<string, string> = {
   '': 'major triad',
-  m: 'minor triad',
+  '-': 'minor triad',
   '+': 'augmented triad',
   '°': 'diminished triad',
   sus2: 'suspended 2nd',
   sus4: 'suspended 4th',
+}
+
+/** Exact pitch-class set (from the root) → jazz suffix. */
+const JAZZ_SUFFIX_BY_SEMITONES: Record<string, string> = {
+  ...TRIAD_SUFFIX_BY_SEMITONES,
+  '0,4,7,11': 'Δ7',
+  '0,3,7,10': '-7',
+  '0,4,7,10': '7',
+  '0,3,6,10': 'ø7',
+  '0,3,6,9': '°7',
+  '0,4,7,9': '6',
+  '0,3,7,9': '-6',
+  '0,3,7,11': '-Δ7',
+  '0,3,6,11': '°Δ7',
+  '0,2,4,9': '6/9',
+  '0,2,3,9': '-6/9',
+  '0,2,5,7': 'sus2',
+  '0,5,7,10': '7sus4',
+  '0,2,7,10': '7sus2',
+  '0,2,5,10': '9sus4',
+  '0,1,5,10': '7sus4♭9',
+  '0,2,4,10': '9',
+  '0,4,5,10': '11',
+  '0,4,9,10': '13',
+  '0,2,4,11': 'Δ9',
+  '0,4,9,11': 'Δ13',
+  '0,2,3,10': '-9',
+  '0,3,5,10': '-11',
+  '0,3,9,10': '-13',
+  '0,2,4,7': 'add9',
+  '0,2,3,7': '-add9',
+  '0,4,6,11': 'Δ7♯11',
+  '0,4,8,11': 'Δ7♯5',
+  '0,4,6,10': '7♭5',
+  '0,4,8,10': '7♯5',
+  '0,1,4,10': '7♭9',
+  '0,3,4,10': '7♯9',
+  '0,1,4,8': '7alt',
+  '0,1,4,9': '13♭9',
+  '0,4,6,9': '13♯11',
+  '0,3,8,10': '-7♯5',
+  '0,1,4,6': '7♭9♭5',
+  '0,3,4,6': '7♯9♭5',
+  '0,3,4,8': '7♯9♯5',
+  '0,5,7,9': '6sus4',
+  '0,5,7,11': 'Δ7sus4',
+  '0,2,7,9': '6sus2',
+  '0,2,7,11': 'Δ7sus2',
+  '0,2,5,11': 'Δ9sus4',
+}
+
+const JAZZ_LABEL_BY_SUFFIX: Record<string, string> = {
+  ...TRIAD_LABEL_BY_SUFFIX,
+  Δ7: 'major 7th',
+  '-7': 'minor 7th',
+  '7': 'dominant 7th',
+  ø7: 'half-diminished 7th',
+  '°7': 'diminished 7th',
+  '6': 'major 6th',
+  '-6': 'minor 6th',
+  '-Δ7': 'minor-major 7th',
+  '°Δ7': 'diminished major 7th',
+  '6/9': 'six-nine',
+  '-6/9': 'minor six-nine',
+  '7sus4': 'dominant 7th suspended 4th',
+  '7sus2': 'dominant 7th suspended 2nd',
+  '9sus4': 'dominant 9th suspended 4th',
+  '7sus4♭9': 'dominant 7th suspended Phrygian',
+  '9': 'dominant 9th',
+  '11': 'dominant 11th',
+  '13': 'dominant 13th',
+  Δ9: 'major 9th',
+  Δ13: 'major 13th',
+  '-9': 'minor 9th',
+  '-11': 'minor 11th',
+  '-13': 'minor 13th',
+  add9: 'add 9',
+  '-add9': 'minor add 9',
+  'Δ7♯11': 'Lydian major 7th',
+  'Δ7♯5': 'augmented major 7th',
+  'Δ7♭5': 'major 7th flat five',
+  '7♭5': 'dominant 7th flat five',
+  '7♯5': 'dominant 7th sharp five',
+  '7♭9': 'dominant 7th flat nine',
+  '7♯9': 'dominant 7th sharp nine',
+  '7♯11': 'dominant 7th sharp eleven',
+  '7♭13': 'dominant 7th flat thirteen',
+  '7alt': 'altered dominant',
+  '13♭9': 'dominant 13th flat nine',
+  '13♯11': 'dominant 13th sharp eleven',
+  '-7♯5': 'minor 7th sharp five',
+  '7♭9♭5': 'dominant 7th flat nine flat five',
+  '7♯9♭5': 'dominant 7th sharp nine flat five',
+  '7♯9♯5': 'dominant 7th sharp nine sharp five',
+  '6sus4': 'major 6th suspended 4th',
+  'Δ7sus4': 'major 7th suspended 4th',
+  '6sus2': 'major 6th suspended 2nd',
+  'Δ7sus2': 'major 7th suspended 2nd',
+  'Δ9sus4': 'major 9th suspended 4th',
 }
 
 export function triadSuffixFromSemitones(
@@ -149,4 +248,21 @@ export function triadSuffixFromSemitones(
 
 export function triadQualityLabel(suffix: string): string {
   return TRIAD_LABEL_BY_SUFFIX[suffix] ?? 'triad'
+}
+
+export function jazzSuffixFromSemitones(
+  semitones: Iterable<number>
+): string | null {
+  const key = [...new Set(semitones)].sort((a, b) => a - b).join(',')
+  return Object.prototype.hasOwnProperty.call(JAZZ_SUFFIX_BY_SEMITONES, key)
+    ? JAZZ_SUFFIX_BY_SEMITONES[key]
+    : null
+}
+
+export function jazzQualityLabel(suffix: string): string {
+  return JAZZ_LABEL_BY_SUFFIX[suffix] ?? (suffix ? suffix : 'major triad')
+}
+
+export function isKnownJazzSuffix(suffix: string): boolean {
+  return Object.prototype.hasOwnProperty.call(JAZZ_LABEL_BY_SUFFIX, suffix)
 }

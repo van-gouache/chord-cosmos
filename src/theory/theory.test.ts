@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseChord, tryParseChord } from './chords'
+import { displayChordSymbol, parseChord, tryParseChord } from './chords'
 import {
   findFingerings,
   fingeringFromTab,
@@ -31,6 +31,7 @@ import { generateAllGroups, generateGroup, voicingMatchingTab } from './voicings
 import {
   ALL_QUALITY_CHIPS,
   TRIAD_QUALITY_CHIPS,
+  jazzSuffixFromSemitones,
   triadSuffixFromSemitones,
 } from './qualities'
 
@@ -118,6 +119,27 @@ describe('chord symbol parsing', () => {
     expect(degrees('C[3,5,b7,9]')).toEqual(['9', '3', '5', '♭7'])
     expect(() => parseChord('E[R,3,5]')).toThrow(/exactly four/)
     expect(() => parseChord('E[R,foo,5,7]')).toThrow(/Unknown interval/)
+  })
+
+  it('names interval sets with jazz symbols', () => {
+    expect(parseChord('E[R,4,5,6]').symbol).toBe('E6sus4')
+    expect(parseChord('E[R,3,5,b7]').symbol).toBe('E7')
+    expect(parseChord('C[R,b3,5,b7]').symbol).toBe('C-7')
+    expect(parseChord('E[R,3,5,7]').symbol).toBe('EΔ7')
+    expect(jazzSuffixFromSemitones([0, 5, 7, 9])).toBe('6sus4')
+    expect(displayChordSymbol('Em7')).toBe('E-7')
+    expect(displayChordSymbol('DMaj7')).toBe('DΔ7')
+    expect(displayChordSymbol('Em7b5')).toBe('Eø7')
+    expect(displayChordSymbol('Bbmaj7')).toBe('B♭Δ7')
+  })
+
+  it('canonicalizes typed symbols to jazz shorthand', () => {
+    expect(parseChord('Em7').symbol).toBe('E-7')
+    expect(parseChord('Emaj7').symbol).toBe('EΔ7')
+    expect(parseChord('Emin7b5').symbol).toBe('Eø7')
+    expect(parseChord('EmMaj7').symbol).toBe('E-Δ7')
+    expect(parseChord('E6sus4').symbol).toBe('E6sus4')
+    expect(parseChord('EΔ7sus4').symbol).toBe('EΔ7sus4')
   })
 
   it('reads minor six-nine and diminished-major 7th', () => {
@@ -624,7 +646,7 @@ describe('triad voicings', () => {
 
   it('maps triad interval sets onto named suffixes', () => {
     expect(triadSuffixFromSemitones([0, 4, 7])).toBe('')
-    expect(triadSuffixFromSemitones([0, 3, 7])).toBe('m')
+    expect(triadSuffixFromSemitones([0, 3, 7])).toBe('-')
     expect(triadSuffixFromSemitones([0, 4, 8])).toBe('+')
     expect(triadSuffixFromSemitones([0, 3, 6])).toBe('°')
     expect(triadSuffixFromSemitones([0, 2, 7])).toBe('sus2')

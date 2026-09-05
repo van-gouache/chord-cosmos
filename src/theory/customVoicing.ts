@@ -18,7 +18,7 @@ import {
   type FretNote,
 } from './fretboard'
 import { mod12, parseNoteName, spellDegree } from './pitch'
-import { triadSuffixFromSemitones } from './qualities'
+import { jazzSuffixFromSemitones } from './qualities'
 import type { VoicingShape } from './vsystem'
 import type { Voicing } from './voicings'
 
@@ -180,8 +180,8 @@ export function customChordSymbol(
   const semitones = [
     ...new Set(fingering.notes.map((note) => mod12(note.midi - rootPc))),
   ].sort((a, b) => a - b)
-  const triad = triadSuffixFromSemitones(semitones)
-  if (triad !== null) return `${rootName}${triad}`
+  const named = jazzSuffixFromSemitones(semitones)
+  if (named !== null) return `${rootName}${named}`
   if (semitones.length === 4) {
     const tokens = INTERVAL_OPTIONS.filter((option) =>
       semitones.includes(option.semitones)

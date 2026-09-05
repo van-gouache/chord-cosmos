@@ -10,6 +10,11 @@
  * adjustment made along the way is reported so the UI can be honest about it.
  */
 
+import {
+  isKnownJazzSuffix,
+  jazzQualityLabel,
+  jazzSuffixFromSemitones,
+} from './qualities'
 import { mod12, parseNoteName, spellDegree, type PitchClass } from './pitch'
 
 /** How essential a tone is to the chord's identity, used when trimming to four. */
@@ -35,7 +40,7 @@ export interface ChordTone {
 export interface ParsedChord {
   /** The symbol exactly as the user typed it. */
   input: string
-  /** Normalized display symbol, e.g. `E-7` -> `Em7`. */
+  /** Normalized jazz symbol, e.g. `Em7` -> `E-7`. */
   symbol: string
   rootName: string
   rootPc: PitchClass
@@ -213,7 +218,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
       quality: {
         tones: [THIRD_MINOR, FIFTH_DIM, SEVENTH_MIN],
         label: 'half-diminished 7th',
-        suffix: 'm7♭5',
+        suffix: 'ø7',
       },
       rest: s,
     }
@@ -228,7 +233,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
         quality: {
           tones: [THIRD_MINOR, FIFTH_DIM, SEVENTH_MAJ],
           label: 'diminished major 7th',
-          suffix: '°Maj7',
+          suffix: '°Δ7',
         },
         rest: s,
       }
@@ -270,7 +275,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
         quality: {
           tones: [THIRD_MINOR, FIFTH_PERFECT, SEVENTH_MAJ, ...ext.tones],
           label: 'minor-major 7th',
-          suffix: `mMaj${ext.label || '7'}`,
+          suffix: `-Δ${ext.label || '7'}`,
         },
         rest: s,
       }
@@ -281,7 +286,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
           quality: {
             tones: [THIRD_MINOR, FIFTH_PERFECT, SIXTH, NINTH],
             label: 'minor six-nine',
-            suffix: 'm6/9',
+            suffix: '-6/9',
           },
           rest: s,
         }
@@ -290,7 +295,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
         quality: {
           tones: [THIRD_MINOR, FIFTH_PERFECT, SIXTH],
           label: 'minor 6th',
-          suffix: 'm6',
+          suffix: '-6',
         },
         rest: s,
       }
@@ -301,7 +306,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
         quality: {
           tones: [THIRD_MINOR, FIFTH_PERFECT, SEVENTH_MIN, ...ext.tones],
           label: `minor ${ext.label}th`,
-          suffix: `m${ext.label}`,
+          suffix: `-${ext.label}`,
         },
         rest: s,
       }
@@ -310,7 +315,7 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
       quality: {
         tones: [THIRD_MINOR, FIFTH_PERFECT],
         label: 'minor triad',
-        suffix: 'm',
+        suffix: '-',
       },
       rest: s,
     }
@@ -352,11 +357,28 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
       }
     }
     const ext = extensionTones()
+    if (take('sus')) {
+      const susTwo = take('2')
+      if (!susTwo) take('4')
+      const susTone: ToneSpec = susTwo
+        ? { semitones: 2, degree: '2', role: 'third' }
+        : { semitones: 5, degree: '4', role: 'third' }
+      return {
+        quality: {
+          tones: [susTone, FIFTH_PERFECT, SEVENTH_MAJ, ...ext.tones],
+          label: susTwo
+            ? 'major 7th suspended 2nd'
+            : 'major 7th suspended 4th',
+          suffix: `Δ${ext.label || '7'}sus${susTwo ? '2' : '4'}`,
+        },
+        rest: s,
+      }
+    }
     return {
       quality: {
         tones: [THIRD_MAJOR, FIFTH_PERFECT, SEVENTH_MAJ, ...ext.tones],
         label: `major ${ext.label || '7'}th`,
-        suffix: `Maj${ext.label || '7'}`,
+        suffix: `Δ${ext.label || '7'}`,
       },
       rest: s,
     }
@@ -369,14 +391,14 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
       quality: {
         tones: [THIRD_MAJOR, FIFTH_PERFECT, SEVENTH_MAJ, ...ext.tones],
         label: `major ${ext.label || '7'}th`,
-        suffix: `Maj${ext.label || '7'}`,
+        suffix: `Δ${ext.label || '7'}`,
       },
       rest: s,
     }
   }
 
   // --- Suspended -----------------------------------------------------------
-  if (/^\d*sus/.test(s)) {
+  if (/^(13|11|9|7)?sus/.test(s)) {
     const seventhLabel = take('13')
       ? '13'
       : take('11')
@@ -409,6 +431,21 @@ function parseQuality(rest: string): { quality: QualityResult; rest: string } {
   }
 
   // --- Sixth and six-nine --------------------------------------------------
+  if (take('6sus')) {
+    const susTwo = take('2')
+    if (!susTwo) take('4')
+    const susTone: ToneSpec = susTwo
+      ? { semitones: 2, degree: '2', role: 'third' }
+      : { semitones: 5, degree: '4', role: 'third' }
+    return {
+      quality: {
+        tones: [susTone, FIFTH_PERFECT, SIXTH],
+        label: susTwo ? 'major 6th suspended 2nd' : 'major 6th suspended 4th',
+        suffix: susTwo ? '6sus2' : '6sus4',
+      },
+      rest: s,
+    }
+  }
   if (take('6/9') || take('69')) {
     return {
       quality: {
@@ -717,15 +754,19 @@ function parseCustomChord(
     }
   })
 
+  const spelledRoot = spellDegree(rootLetter, 'R', rootPc)
+  const suffix = jazzSuffixFromSemitones(specs.map((spec) => spec.semitones))
+
   return {
     input,
-    symbol: formatCustomSymbol(
-      spellDegree(rootLetter, 'R', rootPc),
-      canonical
-    ),
+    symbol:
+      suffix !== null
+        ? `${spelledRoot}${suffix}`
+        : formatCustomSymbol(spelledRoot, canonical),
     rootName,
     rootPc,
-    qualityLabel: 'custom four-note',
+    qualityLabel:
+      suffix !== null ? jazzQualityLabel(suffix) : 'custom four-note',
     tones,
     allTones: tones,
     adjustments: [],
@@ -778,6 +819,7 @@ export function parseChord(input: string): ParsedChord {
     }
   }
   let specs = [...bySemitone.values()].sort((a, b) => a.semitones - b.semitones)
+  const writtenSpecs = specs
 
   // Bring the chord to exactly four distinct tones. Each pass adds a tone the
   // chord doesn't already have, so this always terminates.
@@ -816,16 +858,33 @@ export function parseChord(input: string): ParsedChord {
     }
   }
 
+  const spelledRoot = spellDegree(parsedRoot.letter, 'R', parsedRoot.pc)
+  const composed = `${quality.suffix}${modSuffix}`
+  const jazzSuffix =
+    jazzSuffixFromSemitones(writtenSpecs.map((spec) => spec.semitones)) ??
+    jazzSuffixFromSemitones(specs.map((spec) => spec.semitones))
+  const suffix = isKnownJazzSuffix(composed)
+    ? composed
+    : (jazzSuffix ?? composed)
+
   return {
     input: trimmed,
-    symbol: `${spellDegree(parsedRoot.letter, 'R', parsedRoot.pc)}${quality.suffix}${modSuffix}`,
+    symbol: `${spelledRoot}${suffix}`,
     rootName,
     rootPc: parsedRoot.pc,
-    qualityLabel: quality.label,
+    qualityLabel: isKnownJazzSuffix(suffix)
+      ? jazzQualityLabel(suffix)
+      : quality.label,
     tones: specs.map(toChordTone),
     allTones: allSpecs.map(toChordTone),
     adjustments,
   }
+}
+
+/** Jazz display name for any stored or typed symbol. */
+export function displayChordSymbol(input: string): string {
+  const { chord } = tryParseChord(input)
+  return chord?.symbol ?? input
 }
 
 /** Parses without throwing; returns null on failure. */

@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { playArrangement, playBeat, stopAll } from '../audio/player'
+import { displayChordSymbol } from '../theory/chords'
 import {
   DEFAULT_STRUM_PATTERN,
   MAX_BPM,
@@ -1100,6 +1101,7 @@ function SlotCell({
           extendHigh: slot.extendHigh,
         })
       : null
+  const chordName = slot ? displayChordSymbol(slot.chordSymbol) : ''
 
   return (
     <div
@@ -1165,7 +1167,7 @@ function SlotCell({
           >
             {!presenting && fretBox && (
               <FretExtendButtons
-                chordSymbol={slot.chordSymbol}
+                chordSymbol={chordName}
                 edge="low"
                 canPlus={fretBox.canExtendLow}
                 canMinus={(slot.extendLow ?? 0) > 0}
@@ -1195,7 +1197,7 @@ function SlotCell({
             </div>
             {!presenting && fretBox && (
               <FretExtendButtons
-                chordSymbol={slot.chordSymbol}
+                chordSymbol={chordName}
                 edge="high"
                 canPlus={fretBox.canExtendHigh}
                 canMinus={(slot.extendHigh ?? 0) > 0}
@@ -1206,7 +1208,7 @@ function SlotCell({
           {presenting ? (
             <div className="mt-2 text-center">
               <p className="truncate text-xl leading-tight font-bold text-white">
-                {slot.chordSymbol}
+                {chordName}
               </p>
               <p className="mt-0.5 truncate text-sm text-nebula-400">
                 {slot.groupId} · {shortInversion(slot.inversion)}
@@ -1223,7 +1225,7 @@ function SlotCell({
               <div className="mt-2 flex items-start justify-between gap-2">
                 <div className="pointer-events-none min-w-0">
                   <p className="truncate text-base leading-tight font-bold text-white">
-                    {slot.chordSymbol}
+                    {chordName}
                   </p>
                   <p className="mt-0.5 truncate text-xs text-nebula-300">
                     {slot.groupId} · {shortInversion(slot.inversion)}
@@ -1239,7 +1241,7 @@ function SlotCell({
                     onDragEnter={allowDrop}
                     onDragOver={allowDrop}
                     onDrop={handleDrop}
-                    aria-label={`Hear ${slot.chordSymbol}`}
+                    aria-label={`Hear ${chordName}`}
                     className={slotIconClass}
                   >
                     ▶
@@ -1253,7 +1255,7 @@ function SlotCell({
                     onDragEnter={allowDrop}
                     onDragOver={allowDrop}
                     onDrop={handleDrop}
-                    aria-label={`Duplicate ${slot.chordSymbol}`}
+                    aria-label={`Duplicate ${chordName}`}
                     className={slotIconClass}
                   >
                     ⧉
@@ -1267,7 +1269,7 @@ function SlotCell({
                     onDragEnter={allowDrop}
                     onDragOver={allowDrop}
                     onDrop={handleDrop}
-                    aria-label={`Remove ${slot.chordSymbol}`}
+                    aria-label={`Remove ${chordName}`}
                     className={`${slotIconClass} hover:text-red-400`}
                   >
                     ✕
@@ -1293,7 +1295,7 @@ function SlotCell({
                 onDragOver={allowDrop}
                 onDrop={handleDrop}
                 placeholder="Note"
-                aria-label={`Note for ${slot.chordSymbol}`}
+                aria-label={`Note for ${chordName}`}
                 className="mt-1.5 w-full bg-transparent text-xs text-cosmos-300 outline-none placeholder:text-cosmos-600"
               />
             </>
@@ -1394,14 +1396,14 @@ function SlotFeelControls({
         {fingering && (
           <OctaveSelect
             fingering={fingering}
-            chordSymbol={slot.chordSymbol}
+            chordSymbol={displayChordSymbol(slot.chordSymbol)}
             onShift={onOctaveShift}
             className={slotSelectClass}
           />
         )}
         <select
           value={slot.playback ?? ''}
-          aria-label={`Playback for ${slot.chordSymbol}`}
+          aria-label={`Playback for ${displayChordSymbol(slot.chordSymbol)}`}
           onChange={(event) => {
             const value = event.target.value
             onChange({
@@ -1421,7 +1423,7 @@ function SlotFeelControls({
       {style === 'strum' && (
         <select
           value={slot.strumPattern ?? ''}
-          aria-label={`Strum pattern for ${slot.chordSymbol}`}
+          aria-label={`Strum pattern for ${displayChordSymbol(slot.chordSymbol)}`}
           onChange={(event) => {
             const value = event.target.value
             onChange({

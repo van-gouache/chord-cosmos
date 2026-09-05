@@ -6,7 +6,7 @@ import {
   type IntervalOption,
   type ParsedChord,
 } from '../theory/chords'
-import { triadSuffixFromSemitones } from '../theory/qualities'
+import { jazzSuffixFromSemitones, triadSuffixFromSemitones } from '../theory/qualities'
 import { triadTones } from '../theory/triads'
 
 export type IntervalPickerMode = 'vsystem' | 'triads'
@@ -82,6 +82,11 @@ export function IntervalPicker({
       return
     }
     if (next.size === voiceCount) {
+      const suffix = jazzSuffixFromSemitones(next)
+      if (suffix !== null) {
+        onApply(`${rootName}${suffix}`)
+        return
+      }
       const tokens = INTERVAL_OPTIONS.filter((o) => next.has(o.semitones)).map(
         (o) => o.token
       )

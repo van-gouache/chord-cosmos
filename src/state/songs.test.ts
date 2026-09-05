@@ -476,8 +476,8 @@ describe('song grid helpers', () => {
     expect(text).toContain('m1 (4).')
     expect(text).toContain('[Verse]')
     expect(text).toContain('keep it sparse')
-    expect(text).toContain('Em7')
-    expect(text).toContain('Em7: bass on 1')
+    expect(text).toContain('E-7')
+    expect(text).toContain('E-7: bass on 1')
   })
 
   it('parses and formats strum patterns', () => {
