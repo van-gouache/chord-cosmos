@@ -44,12 +44,12 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        <div className="absolute top-[18%] left-[20%] h-56 w-56 rounded-full bg-nebula-500/25 blur-3xl" />
-        <div className="absolute right-[18%] bottom-[22%] h-48 w-48 rounded-full bg-star-400/15 blur-3xl" />
+        <div className="absolute top-[18%] left-[20%] h-56 w-56 rounded-full bg-nebula-500/18 blur-3xl" />
+        <div className="absolute right-[18%] bottom-[22%] h-48 w-48 rounded-full bg-star-400/12 blur-3xl" />
       </div>
 
       <div className="splash-rise relative flex flex-col items-center px-6 text-center">
-        <Logo className="h-20 w-20 shadow-[0_0_48px_rgba(139,92,246,0.35)]" />
+        <Logo className="h-20 w-20 shadow-[0_0_48px_rgba(79,108,255,0.28)]" />
         <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">
           Chord{' '}
           <span className="bg-gradient-to-r from-nebula-400 to-star-400 bg-clip-text text-transparent">

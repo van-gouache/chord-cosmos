@@ -1,23 +1,27 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-cosmos-950: #07070f;
-  --color-cosmos-900: #0d0d1a;
-  --color-cosmos-850: #12121f;
-  --color-cosmos-800: #191929;
-  --color-cosmos-700: #262638;
-  --color-cosmos-600: #383850;
-  --color-cosmos-400: #7a7a96;
-  --color-cosmos-300: #a5a5be;
+  --color-cosmos-950: #02050c;
+  --color-cosmos-900: #06101c;
+  --color-cosmos-850: #0a1626;
+  --color-cosmos-800: #102033;
+  --color-cosmos-700: #1a2d45;
+  --color-cosmos-600: #2c4260;
+  --color-cosmos-500: #5a718c;
+  --color-cosmos-400: #7d93ad;
+  --color-cosmos-300: #adc0d4;
+  --color-cosmos-200: #c9d6e4;
+  --color-cosmos-100: #e4ecf4;
 
-  --color-nebula-400: #a78bfa;
-  --color-nebula-500: #8b5cf6;
-  --color-nebula-600: #7c3aed;
+  --color-nebula-300: #a8b8ff;
+  --color-nebula-400: #7f94ff;
+  --color-nebula-500: #4f6cff;
+  --color-nebula-600: #3a52d4;
 
-  --color-star-300: #7dd3fc;
-  --color-star-400: #38bdf8;
+  --color-star-300: #9ae4f5;
+  --color-star-400: #4ec8e8;
 
-  --color-gold-400: #fbbf24;
+  --color-gold-400: #e0c36a;
 
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
 }
@@ -31,21 +35,21 @@ body,
 html {
   color-scheme: dark;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800))
+  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 55%, var(--color-cosmos-800))
     transparent;
 }
 
 body {
   margin: 0;
   background-color: var(--color-cosmos-950);
-  color: #e7e7f2;
+  color: #d8e2ee;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800))
+  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 55%, var(--color-cosmos-800))
     transparent;
 }
 
@@ -60,7 +64,7 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800));
+  background: color-mix(in srgb, var(--color-nebula-500) 55%, var(--color-cosmos-800));
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 999px;
@@ -76,20 +80,47 @@ body {
   background: transparent;
 }
 
-/* Faint starfield behind the whole app. */
+/* Distant nebulae — low, cold, and far away. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   background-image:
-    radial-gradient(
-      circle at 15% 20%,
-      rgba(139, 92, 246, 0.14),
-      transparent 45%
-    ),
-    radial-gradient(circle at 85% 10%, rgba(56, 189, 248, 0.1), transparent 40%),
-    radial-gradient(circle at 60% 85%, rgba(167, 139, 250, 0.08), transparent 45%);
+    radial-gradient(ellipse 80% 55% at 12% 0%, rgba(40, 72, 160, 0.2), transparent 58%),
+    radial-gradient(ellipse 60% 45% at 92% 8%, rgba(24, 110, 140, 0.12), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 70% 100%, rgba(56, 36, 110, 0.14), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 0% 80%, rgba(20, 48, 90, 0.16), transparent 50%);
+}
+
+/* Sparse starfield. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.85;
+  background-image:
+    radial-gradient(1px 1px at 6% 14%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 14% 48%, rgba(210, 230, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 19% 81%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1.4px 1.4px at 27% 22%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 33% 67%, rgba(174, 214, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 41% 9%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 48% 38%, rgba(210, 230, 255, 0.3), transparent),
+    radial-gradient(1.5px 1.5px at 54% 73%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 61% 18%, rgba(174, 214, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 68% 56%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 74% 88%, rgba(210, 230, 255, 0.35), transparent),
+    radial-gradient(1.3px 1.3px at 81% 31%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 87% 64%, rgba(174, 214, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 93% 12%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 11% 91%, rgba(210, 230, 255, 0.3), transparent),
+    radial-gradient(1px 1px at 36% 94%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 58% 4%, rgba(174, 214, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 77% 47%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(1.2px 1.2px at 96% 82%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 3% 61%, rgba(210, 230, 255, 0.35), transparent);
 }
 
 @keyframes splash-rise {

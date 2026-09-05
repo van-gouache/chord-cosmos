@@ -124,7 +124,7 @@ export function SongManager({
         role="dialog"
         aria-modal="true"
         aria-labelledby="song-manager-title"
-        className="flex max-h-[min(720px,90vh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-nebula-500/40 bg-cosmos-900 shadow-[0_24px_80px_-24px_rgba(139,92,246,0.55)]"
+        className="flex max-h-[min(720px,90vh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-nebula-500/40 bg-cosmos-900 shadow-[0_24px_80px_-24px_rgba(79,108,255,0.4)]"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-cosmos-700/70 px-5 py-4">
           <div>

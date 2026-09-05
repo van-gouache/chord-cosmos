@@ -400,7 +400,7 @@ function VoicingGrid({
             title="Drag onto the sequence"
             className={`group flex cursor-grab flex-col items-center gap-1 rounded-xl border p-2.5 transition active:cursor-grabbing ${
               isSelected
-                ? 'border-nebula-500 bg-nebula-500/12 shadow-[0_8px_28px_-14px_rgba(139,92,246,0.9)]'
+                ? 'border-nebula-500 bg-nebula-500/12 shadow-[0_8px_28px_-14px_rgba(79,108,255,0.7)]'
                 : 'border-cosmos-700/70 bg-cosmos-900/50 hover:border-nebula-500/60 hover:bg-cosmos-850'
             }`}
           >
