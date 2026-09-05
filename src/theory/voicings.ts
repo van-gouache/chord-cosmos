@@ -5,6 +5,7 @@
 
 import type { ChordTone, ParsedChord } from './chords'
 import {
+  findCrossedFingerings,
   findFingerings,
   previewScore,
   shiftFingering,
@@ -13,6 +14,11 @@ import {
   type SearchOptions,
 } from './fretboard'
 import { buildShape, V_GROUPS, type VGroup, type VoicingShape } from './vsystem'
+
+export interface GenerateOptions extends SearchOptions {
+  /** Cross-string reassignments. Off for the 14-group grid. */
+  includeVariants?: boolean
+}
 
 /** One concrete, selectable chord: a shape plus the way you'd finger it. */
 export interface Voicing {
@@ -24,6 +30,8 @@ export interface Voicing {
   inversion: number
   shape: VoicingShape
   fingering: Fingering
+  /** Standard ladder grip or a string crossing. */
+  variant?: 'standard' | 'cross'
 }
 
 /** One of the four systematic inversions of a group, with its fingerings. */
@@ -32,6 +40,8 @@ export interface InversionOption {
   bassTone: ChordTone
   shape: VoicingShape
   voicings: Voicing[]
+  /** Same four pitches, a higher string sounding below a lower one. */
+  crossed?: Voicing[]
 }
 
 /** Everything the app knows about one voicing group for the current chord. */
@@ -58,7 +68,7 @@ export function voicingId(
 export function generateGroup(
   chord: ParsedChord,
   group: VGroup,
-  options: SearchOptions = {}
+  options: GenerateOptions = {}
 ): GroupResult {
   const inversions: InversionOption[] = []
   let voicingCount = 0
@@ -67,7 +77,10 @@ export function generateGroup(
     const shape = buildShape(chord.tones, group, inversion)
     const fingerings = findFingerings(shape, chord.rootPc, options)
 
-    const voicings = fingerings.map((fingering) => ({
+    const toVoicing = (
+      fingering: Fingering,
+      variant: NonNullable<Voicing['variant']>
+    ): Voicing => ({
       id: voicingId(chord.symbol, group.id, inversion, fingering),
       chordSymbol: chord.symbol,
       rootName: chord.rootName,
@@ -75,7 +88,17 @@ export function generateGroup(
       inversion,
       shape,
       fingering,
-    }))
+      variant,
+    })
+
+    const voicings = fingerings.map((fingering) =>
+      toVoicing(fingering, 'standard')
+    )
+    const crossed = options.includeVariants
+      ? findCrossedFingerings(shape, chord.rootPc, options).map((fingering) =>
+          toVoicing(fingering, 'cross')
+        )
+      : []
 
     voicingCount += voicings.length
     inversions.push({
@@ -83,6 +106,7 @@ export function generateGroup(
       bassTone: shape.voiceTones[0],
       shape,
       voicings,
+      crossed,
     })
   }
 
@@ -112,7 +136,7 @@ export function generateGroup(
 /** Builds all 14 groups for a chord, in V-System order. */
 export function generateAllGroups(
   chord: ParsedChord,
-  options: SearchOptions = {}
+  options: GenerateOptions = {}
 ): GroupResult[] {
   return V_GROUPS.map((group) => generateGroup(chord, group, options))
 }
@@ -121,6 +145,17 @@ export function generateAllGroups(
 export function inversionLabel(option: InversionOption): string {
   const degree = option.bassTone.degree
   return degree === 'R' ? 'Root in bass' : `${degree} in bass`
+}
+
+export function voicingMatchingTab(
+  option: InversionOption | undefined,
+  tab: string
+): Voicing | undefined {
+  if (!option) return undefined
+  return (
+    option.voicings.find((item) => tabLabel(item.fingering) === tab) ??
+    option.crossed?.find((item) => tabLabel(item.fingering) === tab)
+  )
 }
 
 export function inversionOrdinal(inversion: number): string {

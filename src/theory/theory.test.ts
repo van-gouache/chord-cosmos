@@ -9,6 +9,7 @@ import {
   positionLabel,
   shiftFingering,
   STANDARD_TUNING,
+  stringsCrossPitch,
   tabLabel,
   type Fingering,
 } from './fretboard'
@@ -22,10 +23,11 @@ import {
 import {
   buildTriadShape,
   generateAllTriads,
+  generateTriadGroup,
   TRIAD_GROUPS_BY_ID,
   triadTones,
 } from './triads'
-import { generateAllGroups, generateGroup } from './voicings'
+import { generateAllGroups, generateGroup, voicingMatchingTab } from './voicings'
 import {
   ALL_QUALITY_CHIPS,
   TRIAD_QUALITY_CHIPS,
@@ -649,6 +651,68 @@ describe('triad voicings', () => {
       expect(spread?.unreachable, symbol).toBe(false)
       expect(close?.inversions).toHaveLength(3)
     }
+  })
+})
+
+describe('cross-string grips', () => {
+  it('lists crossed fingerings that are not in the standard set', () => {
+    const result = generateGroup(parseChord('Em7'), V_GROUPS_BY_ID['V-2'], {
+      includeVariants: true,
+    })
+    const root = result.inversions[0]
+    expect(root.crossed?.length).toBeGreaterThan(0)
+    const standardTabs = new Set(
+      root.voicings.map((v) => tabLabel(v.fingering))
+    )
+    for (const voicing of root.crossed ?? []) {
+      expect(standardTabs.has(tabLabel(voicing.fingering))).toBe(false)
+      expect(stringsCrossPitch(voicing.fingering.notes)).toBe(true)
+      expect(voicing.variant).toBe('cross')
+      expect(voicing.fingering.notes).toHaveLength(4)
+    }
+  })
+
+  it('can look a crossed tab back up on the inversion', () => {
+    const result = generateGroup(parseChord('Em7'), V_GROUPS_BY_ID['V-2'], {
+      includeVariants: true,
+    })
+    const crossed = result.inversions[0].crossed?.[0]
+    expect(crossed).toBeDefined()
+    const tab = tabLabel(crossed!.fingering)
+    const match = voicingMatchingTab(result.inversions[0], tab)
+    expect(match?.id).toBe(crossed!.id)
+    expect(match?.fingering.notes.map((n) => n.voice)).toEqual(
+      crossed!.fingering.notes.map((n) => n.voice)
+    )
+  })
+
+  it('skips variants on the 14-group grid', () => {
+    const result = generateGroup(parseChord('Em7'), V_GROUPS_BY_ID['V-2'])
+    expect(result.inversions[0].crossed).toEqual([])
+  })
+
+  it('lists crossed triad fingerings that are not in the standard set', () => {
+    const result = generateTriadGroup(
+      parseChord('C'),
+      TRIAD_GROUPS_BY_ID.Close,
+      { includeVariants: true }
+    )
+    const root = result.inversions[0]
+    expect(root.crossed?.length).toBeGreaterThan(0)
+    const standardTabs = new Set(
+      root.voicings.map((v) => tabLabel(v.fingering))
+    )
+    for (const voicing of root.crossed ?? []) {
+      expect(standardTabs.has(tabLabel(voicing.fingering))).toBe(false)
+      expect(stringsCrossPitch(voicing.fingering.notes)).toBe(true)
+      expect(voicing.variant).toBe('cross')
+      expect(voicing.fingering.notes).toHaveLength(3)
+    }
+  })
+
+  it('skips triad variants on the family grid', () => {
+    const result = generateTriadGroup(parseChord('C'), TRIAD_GROUPS_BY_ID.Close)
+    expect(result.inversions[0].crossed).toEqual([])
   })
 })
 

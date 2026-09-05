@@ -4,11 +4,17 @@
  */
 
 import type { ChordTone, ParsedChord } from './chords'
-import { findIntervalFingerings, previewScore, type SearchOptions } from './fretboard'
+import {
+  findCrossedFingerings,
+  findIntervalFingerings,
+  previewScore,
+  type Fingering,
+} from './fretboard'
 import { mod12 } from './pitch'
 import type { VoicingShape } from './vsystem'
 import {
   voicingId,
+  type GenerateOptions,
   type GroupResult,
   type InversionOption,
   type Voicing,
@@ -123,7 +129,7 @@ export function buildTriadShape(
 export function generateTriadGroup(
   chord: ParsedChord,
   group: TriadGroup,
-  options: SearchOptions = {}
+  options: GenerateOptions = {}
 ): GroupResult {
   const tones = triadTones(chord)
   if (!tones) {
@@ -144,7 +150,10 @@ export function generateTriadGroup(
     const bassPc = mod12(chord.rootPc + shape.voiceTones[0].semitones)
     const fingerings = findIntervalFingerings(shape.intervals, bassPc, options)
 
-    const voicings: Voicing[] = fingerings.map((fingering) => ({
+    const toVoicing = (
+      fingering: Fingering,
+      variant: NonNullable<Voicing['variant']>
+    ): Voicing => ({
       id: voicingId(chord.symbol, group.id, inversion, fingering),
       chordSymbol: chord.symbol,
       rootName: chord.rootName,
@@ -152,7 +161,17 @@ export function generateTriadGroup(
       inversion,
       shape,
       fingering,
-    }))
+      variant,
+    })
+
+    const voicings = fingerings.map((fingering) =>
+      toVoicing(fingering, 'standard')
+    )
+    const crossed = options.includeVariants
+      ? findCrossedFingerings(shape, chord.rootPc, options).map((fingering) =>
+          toVoicing(fingering, 'cross')
+        )
+      : []
 
     voicingCount += voicings.length
     inversions.push({
@@ -160,6 +179,7 @@ export function generateTriadGroup(
       bassTone: shape.voiceTones[0],
       shape,
       voicings,
+      crossed,
     })
   }
 
@@ -182,7 +202,7 @@ export function generateTriadGroup(
 
 export function generateAllTriads(
   chord: ParsedChord,
-  options: SearchOptions = {}
+  options: GenerateOptions = {}
 ): GroupResult[] {
   return TRIAD_GROUPS.map((group) => generateTriadGroup(chord, group, options))
 }

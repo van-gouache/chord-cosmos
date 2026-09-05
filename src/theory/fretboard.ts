@@ -124,8 +124,10 @@ function evaluateFingering(
   if (lowestFret > 0 && lowestFret <= 3 && span >= 3) difficulty += 2
   difficulty -= notes.filter((n) => n.fret === 0).length * 0.5
 
+  const ordered = [...notes].sort((a, b) => a.string - b.string)
+
   return {
-    notes,
+    notes: ordered,
     strings,
     lowestFret,
     highestFret,
@@ -135,7 +137,7 @@ function evaluateFingering(
     innerMutes,
     position: lowestFret === 0 ? 0 : lowestFret,
     difficulty: Math.round(difficulty * 10) / 10,
-    midiNotes: notes.map((n) => n.midi),
+    midiNotes: ordered.map((n) => n.midi),
   }
 }
 
@@ -215,6 +217,93 @@ export function findFingerings(
 ): Fingering[] {
   const bassPc = mod12(rootPc + shape.voiceTones[0].semitones)
   return findIntervalFingerings(shape.intervals, bassPc, options)
+}
+
+/** True when a higher-numbered string sounds below a lower-numbered one. */
+export function stringsCrossPitch(notes: readonly FretNote[]): boolean {
+  const along = [...notes].sort((a, b) => a.string - b.string)
+  for (let i = 1; i < along.length; i++) {
+    if (along[i].midi < along[i - 1].midi) return true
+  }
+  return false
+}
+
+/**
+ * Same interval stack as {@link findIntervalFingerings}, but each voice is
+ * allowed onto any of the chosen strings so a higher string can sit under a
+ * lower one.
+ */
+export function findCrossedIntervalFingerings(
+  intervals: number[],
+  bassPc: number,
+  options: SearchOptions = {}
+): Fingering[] {
+  const voices = intervals.length
+  if (voices < 2) return []
+
+  const maxFret = options.maxFret ?? DEFAULT_MAX_FRET
+  const maxSpan = options.maxSpan ?? MAX_FRET_SPAN
+  const minBass = options.minBass ?? STANDARD_TUNING[0]
+  const highestPossible = STANDARD_TUNING[STRING_COUNT - 1] + maxFret
+  const sets = stringSetsOf(voices)
+  const assignments = permutations(Array.from({ length: voices }, (_, i) => i))
+  const seen = new Set<string>()
+  const results: Fingering[] = []
+
+  for (let bassMidi = minBass; bassMidi <= highestPossible; bassMidi++) {
+    if (mod12(bassMidi) !== bassPc) continue
+    const targetMidis = intervals.map((step) => bassMidi + step)
+    if (targetMidis[voices - 1] > highestPossible) break
+
+    for (const set of sets) {
+      for (const order of assignments) {
+        if (order.every((voice, i) => voice === i)) continue
+        const notes: FretNote[] = []
+        let ok = true
+        for (let i = 0; i < voices; i++) {
+          const voice = order[i]
+          const string = set[i]
+          const fret = targetMidis[voice] - STANDARD_TUNING[string]
+          if (fret < 0 || fret > maxFret) {
+            ok = false
+            break
+          }
+          notes.push({ string, fret, midi: targetMidis[voice], voice })
+        }
+        if (!ok || !stringsCrossPitch(notes)) continue
+        const fingering = evaluateFingering(notes, maxSpan)
+        if (!fingering) continue
+        const key = tabLabel(fingering)
+        if (seen.has(key)) continue
+        seen.add(key)
+        results.push(fingering)
+      }
+    }
+  }
+
+  results.sort(
+    (a, b) => a.difficulty - b.difficulty || a.lowestFret - b.lowestFret
+  )
+  return results
+}
+
+export function findCrossedFingerings(
+  shape: VoicingShape,
+  rootPc: number,
+  options: SearchOptions = {}
+): Fingering[] {
+  const bassPc = mod12(rootPc + shape.voiceTones[0].semitones)
+  return findCrossedIntervalFingerings(shape.intervals, bassPc, options)
+}
+
+function permutations<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [items.slice()]
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i++) {
+    const rest = items.filter((_, index) => index !== i)
+    for (const perm of permutations(rest)) out.push([items[i], ...perm])
+  }
+  return out
 }
 
 /** Human-readable string set, e.g. `6-5-4-3` (strings numbered guitar-style). */

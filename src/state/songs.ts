@@ -24,7 +24,7 @@ import {
   TRIAD_GROUPS_BY_ID,
 } from '../theory/triads'
 import { buildShape, V_GROUPS_BY_ID, type VoicingShape } from '../theory/vsystem'
-import { generateGroup, type Voicing } from '../theory/voicings'
+import { generateGroup, voicingMatchingTab, type Voicing } from '../theory/voicings'
 
 export const STORAGE_KEY = 'chord-cosmos.songs.v2'
 export const LEGACY_STORAGE_KEY = 'chord-cosmos.songs.v1'
@@ -393,10 +393,8 @@ export function hydrateSlot(slot: SequenceSlot): {
 
   if (isTriadGroupId(slot.groupId)) {
     const group = TRIAD_GROUPS_BY_ID[slot.groupId]
-    const result = generateTriadGroup(chord, group)
-    const match = result.inversions[slot.inversion]?.voicings.find(
-      (v) => tabLabel(v.fingering) === slot.tab
-    )
+    const result = generateTriadGroup(chord, group, { includeVariants: true })
+    const match = voicingMatchingTab(result.inversions[slot.inversion], slot.tab)
     return {
       shape: match?.shape ?? result.inversions[slot.inversion]?.shape ?? null,
       fingering: match?.fingering ?? fingeringFromTab(slot.tab),
@@ -407,13 +405,10 @@ export function hydrateSlot(slot: SequenceSlot): {
   if (!group) return { shape: null, fingering: null }
 
   const shape = buildShape(chord.tones, group, slot.inversion)
-  const result = generateGroup(chord, group)
-  const fingering =
-    result.inversions[slot.inversion]?.voicings.find(
-      (v) => tabLabel(v.fingering) === slot.tab
-    )?.fingering ?? fingeringFromTab(slot.tab)
+  const result = generateGroup(chord, group, { includeVariants: true })
+  const match = voicingMatchingTab(result.inversions[slot.inversion], slot.tab)
 
-  return { shape, fingering }
+  return { shape, fingering: match?.fingering ?? fingeringFromTab(slot.tab) }
 }
 
 /** Moves a placed shape up or down an octave. No-op if it would leave the neck. */

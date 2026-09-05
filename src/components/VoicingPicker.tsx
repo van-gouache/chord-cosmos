@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { ChordDiagram } from './ChordDiagram'
 import { OctaveShiftButtons } from './OctaveShiftButtons'
@@ -53,15 +53,17 @@ export function VoicingPicker({
 
   const active = inversions[inversion]
 
-  const visibleVoicings = useMemo(() => {
-    if (!active) return []
-    if (!hideHard) return active.voicings
-    const filtered = active.voicings.filter(
-      (v) => difficultyLabel(v.fingering.difficulty) !== 'hard'
-    )
-    // Never show an empty list just because everything is a stretch.
-    return filtered.length > 0 ? filtered : active.voicings
-  }, [active, hideHard])
+  const visibleVoicings = useMemo(
+    () => (active ? filterVisible(active.voicings, hideHard) : []),
+    [active, hideHard]
+  )
+  const visibleCrossed = useMemo(
+    () =>
+      active
+        ? filterVisible(active.crossed ?? [], hideHard).slice(0, VARIANT_CAP)
+        : [],
+    [active, hideHard]
+  )
 
   const hardCount = active
     ? active.voicings.length -
@@ -71,7 +73,7 @@ export function VoicingPicker({
 
   const selected =
     inversions
-      .flatMap((i) => i.voicings)
+      .flatMap((option) => [...option.voicings, ...(option.crossed ?? [])])
       .find((v) => v.id === selectedVoicingId) ?? null
 
   useEffect(() => {
@@ -227,82 +229,36 @@ export function VoicingPicker({
           This inversion of {group.id} can't be played in standard tuning.
         </p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5">
-          {visibleVoicings.map((voicing) => {
-            const isSelected = voicing.id === selectedVoicingId
-            const shown = isSelected && displaySelected ? displaySelected : voicing
-            const level = difficultyLabel(shown.fingering.difficulty)
-            return (
-              <div
-                key={voicing.id}
-                role="button"
-                tabIndex={0}
-                draggable
-                onDragStart={(event) => beginVoicingDrag(event, shown)}
-                onClick={() => handleSelect(voicing)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    handleSelect(voicing)
-                  }
-                }}
-                title="Drag onto the sequence"
-                className={`group flex cursor-grab flex-col items-center gap-1 rounded-xl border p-2.5 transition active:cursor-grabbing ${
-                  isSelected
-                    ? 'border-nebula-500 bg-nebula-500/12 shadow-[0_8px_28px_-14px_rgba(139,92,246,0.9)]'
-                    : 'border-cosmos-700/70 bg-cosmos-900/50 hover:border-nebula-500/60 hover:bg-cosmos-850'
-                }`}
-              >
-                <div className="flex w-full items-baseline justify-between text-[11px]">
-                  <span className="font-semibold text-white">
-                    {positionLabel(shown.fingering)}
-                  </span>
-                  <span className={DIFFICULTY_STYLES[level]} title={`${level} to play`}>
-                    ●
-                  </span>
-                </div>
+        <VoicingGrid
+          voicings={visibleVoicings}
+          selectedVoicingId={selectedVoicingId}
+          displaySelected={displaySelected}
+          onSelect={handleSelect}
+          onAdd={(voicing, shown) => {
+            onSelectVoicing(voicing)
+            onAdd(shown)
+          }}
+        />
+      )}
 
-                <ChordDiagram
-                  fingering={shown.fingering}
-                  shape={shown.shape}
-                  size="md"
-                />
-
-                <p className="w-full truncate text-center font-mono text-[11px] text-cosmos-300">
-                  {tabLabel(shown.fingering)}
-                </p>
-                <p className="text-[10px] text-cosmos-400">
-                  strings {stringSetLabel(shown.fingering)}
-                  {shown.fingering.barreFret !== null && ' · barre'}
-                </p>
-
-                <div className="mt-0.5 flex w-full gap-1">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      playArpeggio(shown.fingering.midiNotes)
-                    }}
-                    className="flex-1 rounded-md bg-cosmos-800 py-1 text-[11px] text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white"
-                  >
-                    ▶ Hear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSelectVoicing(voicing)
-                      onAdd(shown)
-                    }}
-                    className="flex-1 rounded-md bg-nebula-600 py-1 text-[11px] font-semibold text-white transition hover:bg-nebula-500"
-                  >
-                    + Add
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      {visibleCrossed.length > 0 && (
+        <VariantSection
+          title="Cross-string"
+          hint={`Same ${voiceCountWord(active?.shape.voiceTones.length ?? 4)} pitches, with a higher string sounding below a lower one.`}
+          total={active?.crossed?.length ?? 0}
+          shown={visibleCrossed.length}
+        >
+          <VoicingGrid
+            voicings={visibleCrossed}
+            selectedVoicingId={selectedVoicingId}
+            displaySelected={displaySelected}
+            onSelect={handleSelect}
+            onAdd={(voicing, shown) => {
+              onSelectVoicing(voicing)
+              onAdd(shown)
+            }}
+          />
+        </VariantSection>
       )}
 
       {/* Detail of the selected shape */}
@@ -325,8 +281,8 @@ export function VoicingPicker({
             </p>
             <p className="mt-1 text-xs text-cosmos-400">
               {displaySelected.fingering.notes
-                .map((n, i) => {
-                  const tone = displaySelected.shape.voiceTones[i]
+                .map((n) => {
+                  const tone = displaySelected.shape.voiceTones[n.voice]
                   return `${tone.name}${midiToOctave(n.midi)} (${tone.degree})`
                 })
                 .join('  ·  ')}
@@ -369,6 +325,141 @@ export function VoicingPicker({
       )}
     </section>
   )
+}
+
+const VARIANT_CAP = 16
+
+function filterVisible(voicings: Voicing[], hideHard: boolean): Voicing[] {
+  if (!hideHard) return voicings
+  const filtered = voicings.filter(
+    (v) => difficultyLabel(v.fingering.difficulty) !== 'hard'
+  )
+  return filtered.length > 0 ? filtered : voicings
+}
+
+function VariantSection({
+  title,
+  hint,
+  total,
+  shown,
+  children,
+}: {
+  title: string
+  hint: string
+  total: number
+  shown: number
+  children: ReactNode
+}) {
+  return (
+    <div className="mt-5">
+      <p className="text-xs font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
+        {title}
+      </p>
+      <p className="mt-1 mb-2 text-[11px] text-cosmos-500">
+        {hint}
+        {total > shown ? ` Showing the ${shown} easiest of ${total}.` : ''}
+      </p>
+      {children}
+    </div>
+  )
+}
+
+function VoicingGrid({
+  voicings,
+  selectedVoicingId,
+  displaySelected,
+  onSelect,
+  onAdd,
+}: {
+  voicings: Voicing[]
+  selectedVoicingId: string | null
+  displaySelected: Voicing | null
+  onSelect: (voicing: Voicing) => void
+  onAdd: (voicing: Voicing, shown: Voicing) => void
+}) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5">
+      {voicings.map((voicing) => {
+        const isSelected = voicing.id === selectedVoicingId
+        const shown = isSelected && displaySelected ? displaySelected : voicing
+        const level = difficultyLabel(shown.fingering.difficulty)
+        return (
+          <div
+            key={voicing.id}
+            role="button"
+            tabIndex={0}
+            draggable
+            onDragStart={(event) => beginVoicingDrag(event, shown)}
+            onClick={() => onSelect(voicing)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(voicing)
+              }
+            }}
+            title="Drag onto the sequence"
+            className={`group flex cursor-grab flex-col items-center gap-1 rounded-xl border p-2.5 transition active:cursor-grabbing ${
+              isSelected
+                ? 'border-nebula-500 bg-nebula-500/12 shadow-[0_8px_28px_-14px_rgba(139,92,246,0.9)]'
+                : 'border-cosmos-700/70 bg-cosmos-900/50 hover:border-nebula-500/60 hover:bg-cosmos-850'
+            }`}
+          >
+            <div className="flex w-full items-baseline justify-between text-[11px]">
+              <span className="font-semibold text-white">
+                {positionLabel(shown.fingering)}
+              </span>
+              <span className={DIFFICULTY_STYLES[level]} title={`${level} to play`}>
+                ●
+              </span>
+            </div>
+
+            <ChordDiagram
+              fingering={shown.fingering}
+              shape={shown.shape}
+              size="md"
+            />
+
+            <p className="w-full truncate text-center font-mono text-[11px] text-cosmos-300">
+              {tabLabel(shown.fingering)}
+            </p>
+            <p className="text-[10px] text-cosmos-400">
+              strings {stringSetLabel(shown.fingering)}
+              {shown.fingering.barreFret !== null && ' · barre'}
+            </p>
+
+            <div className="mt-0.5 flex w-full gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  playArpeggio(shown.fingering.midiNotes)
+                }}
+                className="flex-1 rounded-md bg-cosmos-800 py-1 text-[11px] text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white"
+              >
+                ▶ Hear
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAdd(voicing, shown)
+                }}
+                className="flex-1 rounded-md bg-nebula-600 py-1 text-[11px] font-semibold text-white transition hover:bg-nebula-500"
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function voiceCountWord(count: number): string {
+  if (count === 3) return 'three'
+  if (count === 4) return 'four'
+  return String(count)
 }
 
 function gapLabels(gaps: readonly number[]): [string, number][] {

@@ -41,6 +41,11 @@ import {
   type SequenceSlot,
   type Song,
 } from './songs'
+import { parseChord } from '../theory/chords'
+import { tabLabel } from '../theory/fretboard'
+import { generateTriadGroup, TRIAD_GROUPS_BY_ID } from '../theory/triads'
+import { V_GROUPS_BY_ID } from '../theory/vsystem'
+import { generateGroup } from '../theory/voicings'
 
 function slot(partial: Partial<SequenceSlot> & { chordSymbol: string }): SequenceSlot {
   return {
@@ -555,6 +560,66 @@ describe('song grid helpers', () => {
 
     const up = shiftSlotOctave(placed, location, 12)
     expect(up.sections[0].bars[0].slots[0]?.tab).toBe('x-15-14-12-13-12')
+  })
+
+  it('hydrates a crossed V-System tab with the original voice labels', () => {
+    const result = generateGroup(parseChord('Em7'), V_GROUPS_BY_ID['V-2'], {
+      includeVariants: true,
+    })
+    const crossed = result.inversions[0].crossed?.[0]
+    expect(crossed).toBeDefined()
+    const song = createSong('Cross')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(
+      song,
+      location,
+      slot({
+        chordSymbol: 'Em7',
+        groupId: 'V-2',
+        inversion: 0,
+        tab: tabLabel(crossed!.fingering),
+      })
+    )
+    const hydrated = hydrateSlot(placed.sections[0].bars[0].slots[0]!)
+    expect(hydrated.fingering?.notes.map((n) => n.voice)).toEqual(
+      crossed!.fingering.notes.map((n) => n.voice)
+    )
+    expect(hydrated.fingering?.notes).toHaveLength(4)
+  })
+
+  it('hydrates a crossed triad tab with the original voice labels', () => {
+    const result = generateTriadGroup(
+      parseChord('C'),
+      TRIAD_GROUPS_BY_ID.Close,
+      { includeVariants: true }
+    )
+    const crossed = result.inversions[0].crossed?.[0]
+    expect(crossed).toBeDefined()
+    const song = createSong('Cross triad')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(
+      song,
+      location,
+      slot({
+        chordSymbol: 'C',
+        groupId: 'Close',
+        inversion: 0,
+        tab: tabLabel(crossed!.fingering),
+      })
+    )
+    const hydrated = hydrateSlot(placed.sections[0].bars[0].slots[0]!)
+    expect(hydrated.fingering?.notes.map((n) => n.voice)).toEqual(
+      crossed!.fingering.notes.map((n) => n.voice)
+    )
+    expect(hydrated.fingering?.notes).toHaveLength(3)
   })
 })
 

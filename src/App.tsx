@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ArpeggioChart } from './components/ArpeggioChart'
 import { ChordInput } from './components/ChordInput'
 import { FretboardBuilder } from './components/FretboardBuilder'
 import { SplashScreen } from './components/SplashScreen'
@@ -11,8 +10,9 @@ import { unlockAudio } from './audio/player'
 import { locationExists, type SlotLocation } from './state/songs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
-import { generateAllTriads } from './theory/triads'
-import { generateAllGroups, type Voicing } from './theory/voicings'
+import { generateAllTriads, generateTriadGroup, TRIAD_GROUPS_BY_ID } from './theory/triads'
+import { V_GROUPS_BY_ID } from './theory/vsystem'
+import { generateAllGroups, generateGroup, type Voicing } from './theory/voicings'
 
 export default function App() {
   const [input, setInput] = useState('E-7')
@@ -92,6 +92,14 @@ export default function App() {
 
   const selectedGroupId = selectedResult?.group.id ?? null
 
+  const selectedResultWithVariants = useMemo(() => {
+    if (!chord || !selectedResult) return null
+    const group = V_GROUPS_BY_ID[selectedResult.group.id]
+    return group
+      ? generateGroup(chord, group, { includeVariants: true })
+      : selectedResult
+  }, [chord, selectedResult])
+
   const selectedTriad = useMemo(() => {
     const requested = triadGroups.find((g) => g.group.id === requestedTriadId)
     if (requested && !requested.unreachable) return requested
@@ -99,6 +107,15 @@ export default function App() {
   }, [triadGroups, requestedTriadId])
 
   const selectedTriadId = selectedTriad?.group.id ?? null
+
+  const selectedTriadWithVariants = useMemo(() => {
+    if (!chord || !selectedTriad) return null
+    const group = TRIAD_GROUPS_BY_ID[selectedTriad.group.id]
+    return group
+      ? generateTriadGroup(chord, group, { includeVariants: true })
+      : selectedTriad
+  }, [chord, selectedTriad])
+
   const activeGroupId =
     workshopTab === 'triads' ? selectedTriadId : selectedGroupId
 
@@ -205,15 +222,11 @@ export default function App() {
                   <p className="mt-0.5 text-[11px] text-cosmos-500">
                     {workshopTab === 'build'
                       ? 'Click frets to build a shape'
-                      : workshopTab === 'arp'
-                        ? chord
-                          ? `3 notes per string for ${chord.symbol}`
-                          : 'Type a chord to see its arpeggio'
-                        : chord
-                          ? workshopTab === 'triads'
-                            ? `${triadGroups.filter((g) => !g.unreachable).length} of ${triadGroups.length} triad families for ${chord.symbol}`
-                            : `${groups.filter((g) => !g.unreachable).length} of 14 playable for ${chord.symbol}`
-                          : 'Type a chord to add shapes'}
+                      : chord
+                        ? workshopTab === 'triads'
+                          ? `${triadGroups.filter((g) => !g.unreachable).length} of ${triadGroups.length} triad families for ${chord.symbol}`
+                          : `${groups.filter((g) => !g.unreachable).length} of 14 playable for ${chord.symbol}`
+                        : 'Type a chord to add shapes'}
                   </p>
                 </div>
                 <button
@@ -260,17 +273,6 @@ export default function App() {
                   >
                     Build
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => changeWorkshopTab('arp')}
-                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
-                      workshopTab === 'arp'
-                        ? 'bg-nebula-600 text-white'
-                        : 'text-cosmos-400 hover:text-white'
-                    }`}
-                  >
-                    Arp
-                  </button>
                 </div>
 
                 {workshopTab === 'build' ? (
@@ -290,19 +292,7 @@ export default function App() {
                 </div>
                 )}
 
-                {workshopTab === 'arp' && (
-                  <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
-                    {chord ? (
-                      <ArpeggioChart chord={chord} />
-                    ) : (
-                      <p className="p-6 text-center text-sm text-cosmos-400">
-                        Type a chord to see its 3-notes-per-string arpeggio.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {workshopTab !== 'build' && workshopTab !== 'arp' && (
+                {workshopTab !== 'build' && (
                 <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                   {chord ? (
                     workshopTab === 'triads' ? (
@@ -328,22 +318,24 @@ export default function App() {
 
                 {chord &&
                   workshopTab === 'vsystem' &&
-                  selectedResult && (
+                  selectedResultWithVariants && (
                     <VoicingPicker
-                      result={selectedResult}
+                      result={selectedResultWithVariants}
                       selectedVoicingId={activeVoicing?.id ?? null}
                       onSelectVoicing={setSelectedVoicing}
                       onAdd={handleAdd}
                     />
                   )}
-                {chord && workshopTab === 'triads' && selectedTriad && (
-                  <VoicingPicker
-                    result={selectedTriad}
-                    selectedVoicingId={activeVoicing?.id ?? null}
-                    onSelectVoicing={setSelectedVoicing}
-                    onAdd={handleAdd}
-                  />
-                )}
+                {chord &&
+                  workshopTab === 'triads' &&
+                  selectedTriadWithVariants && (
+                    <VoicingPicker
+                      result={selectedTriadWithVariants}
+                      selectedVoicingId={activeVoicing?.id ?? null}
+                      onSelectVoicing={setSelectedVoicing}
+                      onAdd={handleAdd}
+                    />
+                  )}
                 {chord &&
                   workshopTab === 'triads' &&
                   !selectedTriad && (
@@ -375,4 +367,4 @@ export default function App() {
   )
 }
 
-type WorkshopTab = 'vsystem' | 'triads' | 'build' | 'arp'
+type WorkshopTab = 'vsystem' | 'triads' | 'build'
