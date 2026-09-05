@@ -8,7 +8,15 @@ import {
 } from 'react'
 
 import { playArrangement, playBeat, stopAll } from '../audio/player'
-import { displayChordSymbol, tryParseChord } from '../theory/chords'
+import {
+  cellPc,
+  nearestEmptyCell,
+  suggestForwardTargets,
+} from '../theory/betweenTargets'
+import { displayChordSymbol, tryParseChord, type ParsedChord } from '../theory/chords'
+import { TargetNoteChips } from './TargetNoteChips'
+import { LickOutlineChart } from './LickOutlineChart'
+import { lickOutlineNotes } from '../theory/lickOutline'
 import {
   DEFAULT_STRUM_PATTERN,
   MAX_BPM,
@@ -22,6 +30,7 @@ import {
   hydrateSlot,
   locationKey,
   locationsEqual,
+  nextFilledChordMap,
   playTimeline,
   slotPlayback,
   slotStrumPattern,
@@ -101,6 +110,8 @@ interface Props {
   onRedo: () => void
   focusMode: boolean
   onToggleFocus: () => void
+  showForwardTargets?: boolean
+  showLickOutline?: boolean
 }
 
 export function SequencePanel({
@@ -139,6 +150,8 @@ export function SequencePanel({
   onSelectSlot,
   focusMode,
   onToggleFocus,
+  showForwardTargets = true,
+  showLickOutline = false,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
@@ -160,6 +173,10 @@ export function SequencePanel({
   const playingCellRef = useRef<HTMLDivElement>(null)
 
   const timeline = useMemo(() => (song ? playTimeline(song) : []), [song])
+  const nextByLocation = useMemo(
+    () => (song ? nextFilledChordMap(song) : new Map<string, ParsedChord>()),
+    [song]
+  )
 
   const hydratedById = useMemo(() => {
     const map = new Map<
@@ -856,6 +873,9 @@ export function SequencePanel({
                         <SlotCell
                           key={locationKey(location)}
                           location={location}
+                          nextChord={nextByLocation.get(locationKey(location)) ?? null}
+                          showForwardTargets={showForwardTargets}
+                          showLickOutline={showLickOutline}
                           slot={slot}
                           fingering={
                             slot ? (hydratedById.get(slot.id)?.fingering ?? null) : null
@@ -1013,6 +1033,9 @@ export function SequencePanel({
 
 interface SlotCellProps {
   location: SlotLocation
+  nextChord: ParsedChord | null
+  showForwardTargets: boolean
+  showLickOutline: boolean
   slot: Song['sections'][number]['bars'][number]['slots'][number]
   fingering: Fingering | null
   shape: VoicingShape | null
@@ -1044,6 +1067,9 @@ interface SlotCellProps {
 
 function SlotCell({
   location,
+  nextChord,
+  showForwardTargets,
+  showLickOutline,
   slot,
   fingering,
   shape,
@@ -1103,6 +1129,29 @@ function SlotCell({
       : null
   const chordName = slot ? displayChordSymbol(slot.chordSymbol) : ''
   const chordParts = slot ? splitChordDisplay(slot.chordSymbol) : null
+  const currentChord = slot
+    ? tryParseChord(slot.chordSymbol).chord
+    : null
+  const targetTones =
+    showForwardTargets && currentChord && nextChord
+      ? suggestForwardTargets(currentChord, nextChord)
+      : []
+  const targetCells =
+    fingering && fretBox
+      ? new Map(
+          targetTones.flatMap((target) => {
+            const cell = nearestEmptyCell(target.pc, fingering, fretBox)
+            return cell ? [[target.pc, cell] as const] : []
+          })
+        )
+      : new Map<number, { string: number; fret: number }>()
+  const outlinedPcs = new Set(
+    (slot?.highlightedNotes ?? []).map((note) => cellPc(note))
+  )
+  const lickNotes =
+    showLickOutline && fingering && currentChord
+      ? lickOutlineNotes(fingering, currentChord)
+      : []
 
   return (
     <div
@@ -1196,6 +1245,11 @@ function SlotCell({
                 <span className="text-xs text-cosmos-600">?</span>
               )}
             </div>
+            {!presenting && lickNotes.length > 0 && fingering && (
+              <div className="pointer-events-none mt-2 w-full border-t border-cosmos-700/50 pt-2">
+                <LickOutlineChart fingering={fingering} notes={lickNotes} />
+              </div>
+            )}
             {!presenting && fretBox && (
               <FretExtendButtons
                 chordSymbol={chordName}
@@ -1204,6 +1258,25 @@ function SlotCell({
                 canMinus={(slot.extendHigh ?? 0) > 0}
                 onAdjust={(delta) => onExtendFrets('high', delta)}
               />
+            )}
+            {!presenting && targetTones.length > 0 && (
+              <div
+                className="pointer-events-auto w-full"
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <TargetNoteChips
+                  compact
+                  heading={`New in ${nextChord?.symbol ?? 'next'}`}
+                  targets={targetTones}
+                  activePcs={outlinedPcs}
+                  availablePcs={new Set(targetCells.keys())}
+                  onPick={(target) => {
+                    const cell = targetCells.get(target.pc)
+                    if (cell) onToggleHighlight(cell)
+                  }}
+                />
+              </div>
             )}
           </div>
           {presenting ? (

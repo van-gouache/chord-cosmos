@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { ChordDiagram } from './ChordDiagram'
 import { VLadder } from './VLadder'
+import { TargetNoteChips } from './TargetNoteChips'
+import { LickOutlineChart } from './LickOutlineChart'
+import { lickOutlineNotes } from '../theory/lickOutline'
 import { OctaveShiftButtons } from './OctaveShiftButtons'
 import { beginVoicingDrag } from './voicingDrag'
 import { playArpeggio, playNotes } from '../audio/player'
@@ -12,7 +15,8 @@ import {
   tabLabel,
 } from '../theory/fretboard'
 import { midiToOctave } from '../theory/pitch'
-import { displayChordSymbol } from '../theory/chords'
+import { displayChordSymbol, type ParsedChord } from '../theory/chords'
+import { suggestForwardTargets } from '../theory/betweenTargets'
 import {
   inversionLabel,
   inversionOrdinal,
@@ -23,6 +27,10 @@ import {
 
 interface Props {
   result: GroupResult
+  chord: ParsedChord
+  nextChord: ParsedChord | null
+  showForwardTargets?: boolean
+  showLickOutline?: boolean
   selectedVoicingId: string | null
   onSelectVoicing: (voicing: Voicing | null) => void
   onAdd: (voicing: Voicing) => void
@@ -36,6 +44,10 @@ const DIFFICULTY_STYLES: Record<string, string> = {
 
 export function VoicingPicker({
   result,
+  chord,
+  nextChord,
+  showForwardTargets = true,
+  showLickOutline = false,
   selectedVoicingId,
   onSelectVoicing,
   onAdd,
@@ -87,6 +99,14 @@ export function VoicingPicker({
     if (octaveFrets === 0) return selected
     return shiftVoicing(selected, octaveFrets) ?? selected
   }, [selected, octaveFrets])
+
+  const lickNotes = useMemo(
+    () =>
+      showLickOutline && displaySelected
+        ? lickOutlineNotes(displaySelected.fingering, chord)
+        : [],
+    [showLickOutline, displaySelected, chord]
+  )
 
   const handleSelect = (voicing: Voicing) => {
     onSelectVoicing(voicing)
@@ -212,6 +232,12 @@ export function VoicingPicker({
               · spans {active.shape.span} semitones
             </span>
           </p>
+          {showForwardTargets && nextChord && (
+            <TargetNoteChips
+              heading={`New in ${nextChord.symbol}`}
+              targets={suggestForwardTargets(chord, nextChord)}
+            />
+          )}
         </div>
       )}
 
@@ -278,6 +304,13 @@ export function VoicingPicker({
             shape={displaySelected.shape}
             size="lg"
           />
+          {lickNotes.length > 0 && (
+            <LickOutlineChart
+              fingering={displaySelected.fingering}
+              notes={lickNotes}
+              className="min-w-[7rem]"
+            />
+          )}
           <div className="min-w-[180px] flex-1">
             <p className="text-lg font-bold text-white">
               {displayChordSymbol(displaySelected.chordSymbol)}{' '}

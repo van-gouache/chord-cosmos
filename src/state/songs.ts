@@ -3,7 +3,11 @@
  * into a configurable number of steps. A step holds one chord (or a rest).
  */
 
-import { displayChordSymbol, tryParseChord } from '../theory/chords'
+import {
+  displayChordSymbol,
+  tryParseChord,
+  type ParsedChord,
+} from '../theory/chords'
 import {
   customShapeFromFingering,
   fingeringFromCustomTab,
@@ -671,6 +675,52 @@ export function locationsEqual(a: SlotLocation, b: SlotLocation): boolean {
 
 export function locationKey(location: SlotLocation): string {
   return `${location.sectionId}:${location.barId}:${location.slotIndex}`
+}
+
+/** Filled steps in play order, with each stored symbol parsed. */
+export function filledChordTimeline(
+  song: Song
+): { location: SlotLocation; chord: ParsedChord; slot: SequenceSlot }[] {
+  const filled: { location: SlotLocation; chord: ParsedChord; slot: SequenceSlot }[] =
+    []
+  for (const event of playTimeline(song)) {
+    if (!event.slot || !event.location) continue
+    const { chord } = tryParseChord(event.slot.chordSymbol)
+    if (chord) filled.push({ location: event.location, chord, slot: event.slot })
+  }
+  return filled
+}
+
+/** Next filled chord after each filled location. Does not wrap. */
+export function nextFilledChordMap(song: Song): Map<string, ParsedChord> {
+  const filled = filledChordTimeline(song)
+  const map = new Map<string, ParsedChord>()
+  for (let i = 0; i < filled.length - 1; i++) {
+    map.set(locationKey(filled[i].location), filled[i + 1].chord)
+  }
+  return map
+}
+
+/**
+ * Next filled chord after the workshop's current symbol. Prefers the
+ * selected slot when it matches; otherwise the first matching filled slot.
+ */
+export function nextChordForWorkshop(
+  song: Song,
+  workshop: ParsedChord,
+  selected: SlotLocation | null
+): ParsedChord | null {
+  const filled = filledChordTimeline(song)
+  let start = -1
+  if (selected) {
+    const i = filled.findIndex((item) => locationsEqual(item.location, selected))
+    if (i >= 0 && filled[i].chord.symbol === workshop.symbol) start = i
+  }
+  if (start < 0) {
+    start = filled.findIndex((item) => item.chord.symbol === workshop.symbol)
+  }
+  if (start < 0 || start >= filled.length - 1) return null
+  return filled[start + 1].chord
 }
 
 export function moveSlot(song: Song, from: SlotLocation, to: SlotLocation): Song {

@@ -7,7 +7,9 @@ import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
 import { unlockAudio } from './audio/player'
-import { locationExists, type SlotLocation } from './state/songs'
+import { WorkshopConfig } from './components/WorkshopConfig'
+import { locationExists, nextChordForWorkshop, type SlotLocation } from './state/songs'
+import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
 import { generateAllTriads, generateTriadGroup, TRIAD_GROUPS_BY_ID } from './theory/triads'
@@ -19,6 +21,12 @@ export default function App() {
   const [requestedGroupId, setRequestedGroupId] = useState('V-2')
   const [requestedTriadId, setRequestedTriadId] = useState('Close')
   const [workshopTab, setWorkshopTab] = useState<WorkshopTab>('vsystem')
+  const [showForwardTargets, setShowForwardTargets] = useState(
+    () => loadPrefs().showForwardTargets
+  )
+  const [showLickOutline, setShowLickOutline] = useState(
+    () => loadPrefs().showLickOutline
+  )
   const [qualityNonce, setQualityNonce] = useState(0)
   const [selectedVoicing, setSelectedVoicing] = useState<Voicing | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<SlotLocation | null>(null)
@@ -71,6 +79,10 @@ export default function App() {
   }, [])
 
   const { chord, error } = useMemo(() => tryParseChord(input), [input])
+  const workshopNextChord = useMemo(() => {
+    if (!chord || !songs.activeSong) return null
+    return nextChordForWorkshop(songs.activeSong, chord, selectedSlot)
+  }, [chord, songs.activeSong, selectedSlot])
 
   const groups = useMemo(() => (chord ? generateAllGroups(chord) : []), [chord])
   const triadGroups = useMemo(
@@ -208,6 +220,8 @@ export default function App() {
             canRedo={songs.canRedo}
             onUndo={songs.undo}
             onRedo={songs.redo}
+            showForwardTargets={showForwardTargets}
+            showLickOutline={showLickOutline}
           />
         </div>
 
@@ -220,7 +234,9 @@ export default function App() {
                     Voicing workshop
                   </p>
                   <p className="mt-0.5 text-[11px] text-cosmos-500">
-                    {workshopTab === 'build'
+                    {workshopTab === 'config'
+                      ? 'Toggle helpers for the workshop and sequence'
+                      : workshopTab === 'build'
                       ? 'Click frets to build a shape'
                       : chord
                         ? workshopTab === 'triads'
@@ -243,7 +259,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => changeWorkshopTab('vsystem')}
-                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                    className={`flex-1 rounded-md px-1.5 py-1.5 text-[11px] font-semibold tracking-wide uppercase transition ${
                       workshopTab === 'vsystem'
                         ? 'bg-nebula-600 text-white'
                         : 'text-cosmos-400 hover:text-white'
@@ -254,7 +270,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => changeWorkshopTab('triads')}
-                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                    className={`flex-1 rounded-md px-1.5 py-1.5 text-[11px] font-semibold tracking-wide uppercase transition ${
                       workshopTab === 'triads'
                         ? 'bg-nebula-600 text-white'
                         : 'text-cosmos-400 hover:text-white'
@@ -265,7 +281,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => changeWorkshopTab('build')}
-                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                    className={`flex-1 rounded-md px-1.5 py-1.5 text-[11px] font-semibold tracking-wide uppercase transition ${
                       workshopTab === 'build'
                         ? 'bg-nebula-600 text-white'
                         : 'text-cosmos-400 hover:text-white'
@@ -273,9 +289,33 @@ export default function App() {
                   >
                     Build
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => changeWorkshopTab('config')}
+                    className={`flex-1 rounded-md px-1.5 py-1.5 text-[11px] font-semibold tracking-wide uppercase transition ${
+                      workshopTab === 'config'
+                        ? 'bg-nebula-600 text-white'
+                        : 'text-cosmos-400 hover:text-white'
+                    }`}
+                  >
+                    Config
+                  </button>
                 </div>
 
-                {workshopTab === 'build' ? (
+                {workshopTab === 'config' ? (
+                  <WorkshopConfig
+                    showForwardTargets={showForwardTargets}
+                    onShowForwardTargetsChange={(value) => {
+                      setShowForwardTargets(value)
+                      updatePrefs({ showForwardTargets: value })
+                    }}
+                    showLickOutline={showLickOutline}
+                    onShowLickOutlineChange={(value) => {
+                      setShowLickOutline(value)
+                      updatePrefs({ showLickOutline: value })
+                    }}
+                  />
+                ) : workshopTab === 'build' ? (
                   <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                     <FretboardBuilder onAdd={handleAdd} />
                   </div>
@@ -292,7 +332,7 @@ export default function App() {
                 </div>
                 )}
 
-                {workshopTab !== 'build' && (
+                {workshopTab !== 'build' && workshopTab !== 'config' && (
                 <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                   {chord ? (
                     workshopTab === 'triads' ? (
@@ -321,6 +361,10 @@ export default function App() {
                   selectedResultWithVariants && (
                     <VoicingPicker
                       result={selectedResultWithVariants}
+                      chord={chord}
+                      nextChord={workshopNextChord}
+                      showForwardTargets={showForwardTargets}
+                      showLickOutline={showLickOutline}
                       selectedVoicingId={activeVoicing?.id ?? null}
                       onSelectVoicing={setSelectedVoicing}
                       onAdd={handleAdd}
@@ -331,6 +375,10 @@ export default function App() {
                   selectedTriadWithVariants && (
                     <VoicingPicker
                       result={selectedTriadWithVariants}
+                      chord={chord}
+                      nextChord={workshopNextChord}
+                      showForwardTargets={showForwardTargets}
+                      showLickOutline={showLickOutline}
                       selectedVoicingId={activeVoicing?.id ?? null}
                       onSelectVoicing={setSelectedVoicing}
                       onAdd={handleAdd}
@@ -367,4 +415,4 @@ export default function App() {
   )
 }
 
-type WorkshopTab = 'vsystem' | 'triads' | 'build'
+type WorkshopTab = 'vsystem' | 'triads' | 'build' | 'config'
