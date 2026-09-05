@@ -1,0 +1,108 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-cosmos-950: #07070f;
+  --color-cosmos-900: #0d0d1a;
+  --color-cosmos-850: #12121f;
+  --color-cosmos-800: #191929;
+  --color-cosmos-700: #262638;
+  --color-cosmos-600: #383850;
+  --color-cosmos-400: #7a7a96;
+  --color-cosmos-300: #a5a5be;
+
+  --color-nebula-400: #a78bfa;
+  --color-nebula-500: #8b5cf6;
+  --color-nebula-600: #7c3aed;
+
+  --color-star-300: #7dd3fc;
+  --color-star-400: #38bdf8;
+
+  --color-gold-400: #fbbf24;
+
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800))
+    transparent;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-cosmos-950);
+  color: #e7e7f2;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800))
+    transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-cosmos-950) 70%, transparent);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-nebula-500) 72%, var(--color-cosmos-800));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-nebula-400);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Faint starfield behind the whole app. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      circle at 15% 20%,
+      rgba(139, 92, 246, 0.14),
+      transparent 45%
+    ),
+    radial-gradient(circle at 85% 10%, rgba(56, 189, 248, 0.1), transparent 40%),
+    radial-gradient(circle at 60% 85%, rgba(167, 139, 250, 0.08), transparent 45%);
+}
+
+@keyframes splash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.splash-rise {
+  animation: splash-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}

@@ -1,0 +1,583 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import {
+  BEATS_PER_BAR,
+  DEFAULT_BPM,
+  LEGACY_STORAGE_KEY,
+  STORAGE_KEY,
+  appendBarIfNeeded,
+  cloneSlot,
+  duplicateBar,
+  moveBar,
+  cloneSong,
+  countSlots,
+  createSong,
+  emptySection,
+  exportSong,
+  firstEmptyLocation,
+  loadState,
+  locationKey,
+  locationsEqual,
+  formatStrumPattern,
+  moveSlot,
+  normalizeStrumPattern,
+  packEntriesIntoSection,
+  parseStrumPattern,
+  hydrateSlot,
+  patchSlot,
+  placeSlot,
+  shiftSlotOctave,
+  playTimeline,
+  readImportedSongs,
+  saveState,
+  slotFromVoicingPayload,
+  setBarSteps,
+  stepSeconds,
+  type SequenceSlot,
+  type Song,
+} from './songs'
+
+function slot(partial: Partial<SequenceSlot> & { chordSymbol: string }): SequenceSlot {
+  return {
+    id: partial.id ?? `slot-${partial.chordSymbol}`,
+    chordSymbol: partial.chordSymbol,
+    groupId: partial.groupId ?? 'V-2',
+    inversion: partial.inversion ?? 0,
+    tab: partial.tab ?? 'x-7-9-7-8-x',
+    note: partial.note ?? '',
+  }
+}
+
+function songWithSlots(symbols: string[]): Song {
+  const song = createSong('Test')
+  const section = packEntriesIntoSection(
+    symbols.map((chordSymbol, i) => slot({ id: `e${i}`, chordSymbol }))
+  )
+  return { ...song, sections: [section] }
+}
+
+describe('song grid helpers', () => {
+  it('creates a song with one empty four-step measure', () => {
+    const song = createSong('Demo')
+    expect(song.bpm).toBe(DEFAULT_BPM)
+    expect(song.playback).toBe('strum')
+    expect(song.sections).toHaveLength(1)
+    expect(song.sections[0].bars).toHaveLength(1)
+    expect(song.sections[0].bars[0].slots).toHaveLength(BEATS_PER_BAR)
+    expect(song.sections[0].bars[0].slots.every((s) => s === null)).toBe(true)
+    expect(countSlots(song)).toBe(0)
+  })
+
+  it('rebuilds a slot from a dragged voicing payload', () => {
+    const slot = slotFromVoicingPayload(
+      JSON.stringify({
+        chordSymbol: 'Em7',
+        groupId: 'V-4',
+        inversion: 0,
+        tab: 'x-7-9-7-8-x',
+      })
+    )
+    expect(slot?.chordSymbol).toBe('Em7')
+    expect(slot?.groupId).toBe('V-4')
+    expect(slot?.tab).toBe('x-7-9-7-8-x')
+    expect(slotFromVoicingPayload('nope')).toBeNull()
+  })
+
+  it('clones a song with fresh ids and the same chords', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const copy = cloneSong(song, 'Copy')
+    expect(copy.id).not.toBe(song.id)
+    expect(copy.name).toBe('Copy')
+    expect(copy.sections[0].id).not.toBe(song.sections[0].id)
+    expect(copy.sections[0].bars[0].id).not.toBe(song.sections[0].bars[0].id)
+    expect(copy.sections[0].bars[0].slots[0]?.id).not.toBe(
+      song.sections[0].bars[0].slots[0]?.id
+    )
+    expect(copy.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'A7',
+      null,
+      null,
+    ])
+  })
+
+  it('reads a single song, an array, or a library wrapper for import', () => {
+    const song = songWithSlots(['CΔ7'])
+    expect(readImportedSongs(song)).toHaveLength(1)
+    expect(readImportedSongs([song, createSong('Two')])).toHaveLength(2)
+    expect(readImportedSongs({ songs: [song] })).toHaveLength(1)
+    expect(readImportedSongs({ name: 'Nameless' })).toHaveLength(1)
+    expect(readImportedSongs({ name: 'Nameless' })[0].name).toBe('Nameless')
+    expect(readImportedSongs('nope')).toEqual([])
+  })
+
+  it('resizes one measure without changing the others', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7', 'CΔ7'])
+    const first = song.sections[0].bars[0]
+    const second = song.sections[0].bars[1]
+    expect(first.slots).toHaveLength(4)
+    expect(second.slots).toHaveLength(4)
+
+    const tighter = setBarSteps(song, first.id, 2)
+    expect(tighter.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'A7',
+    ])
+    expect(tighter.sections[0].bars[1].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'CΔ7',
+      null,
+      null,
+      null,
+    ])
+
+    const wider = setBarSteps(tighter, first.id, 6)
+    expect(wider.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'A7',
+      null,
+      null,
+      null,
+      null,
+    ])
+    expect(wider.sections[0].bars[1].slots).toHaveLength(4)
+  })
+
+  it('clamps a measure to between 1 and 32 steps', () => {
+    const song = createSong()
+    const barId = song.sections[0].bars[0].id
+    expect(setBarSteps(song, barId, 0).sections[0].bars[0].slots).toHaveLength(1)
+    expect(setBarSteps(song, barId, 99).sections[0].bars[0].slots).toHaveLength(32)
+    expect(setBarSteps(song, barId, 3).sections[0].bars[0].slots).toHaveLength(3)
+  })
+
+  it('sizes each step so a measure still lasts four beats', () => {
+    expect(stepSeconds(60, 4)).toBe(1)
+    expect(stepSeconds(60, 2)).toBe(2)
+    expect(stepSeconds(60, 1)).toBe(4)
+    expect(stepSeconds(60, 8)).toBe(0.5)
+    expect(stepSeconds(60, 3)).toBeCloseTo(4 / 3)
+  })
+
+  it('packs leftover chords into a new bar', () => {
+    const section = packEntriesIntoSection([
+      slot({ chordSymbol: 'Em7' }),
+      slot({ chordSymbol: 'A7' }),
+      slot({ chordSymbol: 'DΔ7' }),
+      slot({ chordSymbol: 'GΔ7' }),
+      slot({ chordSymbol: 'CΔ7' }),
+    ])
+    expect(section.bars).toHaveLength(2)
+    expect(section.bars[0].slots.map((s) => s?.chordSymbol)).toEqual([
+      'Em7',
+      'A7',
+      'DΔ7',
+      'GΔ7',
+    ])
+    expect(section.bars[1].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'CΔ7',
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it('finds the first empty beat and appends a bar when the grid is full', () => {
+    const full = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7'])
+    expect(firstEmptyLocation(full)).toBeNull()
+
+    const prepared = appendBarIfNeeded(full)
+    expect(prepared.song.sections[0].bars).toHaveLength(2)
+    expect(prepared.location.slotIndex).toBe(0)
+    expect(prepared.location.barId).toBe(prepared.song.sections[0].bars[1].id)
+  })
+
+  it('swaps two occupied steps', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const bar = song.sections[0].bars[0]
+    const moved = moveSlot(
+      song,
+      { sectionId: song.sections[0].id, barId: bar.id, slotIndex: 0 },
+      { sectionId: song.sections[0].id, barId: bar.id, slotIndex: 1 }
+    )
+    expect(moved.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'A7',
+      'Em7',
+      null,
+      null,
+    ])
+  })
+
+  it('moves onto an empty step and leaves the source empty', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const bar = song.sections[0].bars[0]
+    const moved = moveSlot(
+      song,
+      { sectionId: song.sections[0].id, barId: bar.id, slotIndex: 0 },
+      { sectionId: song.sections[0].id, barId: bar.id, slotIndex: 2 }
+    )
+    expect(moved.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      null,
+      'A7',
+      'Em7',
+      null,
+    ])
+  })
+
+  it('leaves the song unchanged when moving a slot onto itself', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    expect(moveSlot(song, location, location)).toBe(song)
+  })
+
+  it('walks empty beats as rests in the play timeline', () => {
+    const song = songWithSlots(['Em7'])
+    const events = playTimeline(song)
+    expect(events).toHaveLength(BEATS_PER_BAR)
+    expect(events[0].slot?.chordSymbol).toBe('Em7')
+    expect(events.slice(1).every((e) => e.slot === null)).toBe(true)
+    expect(events.map((e) => e.index)).toEqual([0, 1, 2, 3])
+    expect(events.every((e) => e.seconds === stepSeconds(song.bpm, 4))).toBe(true)
+  })
+
+  it('gives each measure its own step length in the play timeline', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const first = setBarSteps(song, song.sections[0].bars[0].id, 2)
+    const events = playTimeline({ ...first, bpm: 60 })
+    expect(events).toHaveLength(2)
+    expect(events[0].seconds).toBe(2)
+    expect(events[1].seconds).toBe(2)
+  })
+
+  it('clones a slot with a new id', () => {
+    const original = slot({ id: 'same', chordSymbol: 'Em7', note: 'hold' })
+    const copy = cloneSlot(original)
+    expect(copy.id).not.toBe(original.id)
+    expect(copy.chordSymbol).toBe('Em7')
+    expect(copy.note).toBe('hold')
+  })
+
+  it('duplicates a measure immediately after the original', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const section = song.sections[0]
+    const bar = section.bars[0]
+    const next = duplicateBar(song, section.id, bar.id)
+
+    expect(next.sections[0].bars).toHaveLength(2)
+    const [first, copy] = next.sections[0].bars
+    expect(copy.id).not.toBe(first.id)
+    expect(copy.slots.map((item) => item?.chordSymbol ?? null)).toEqual(
+      first.slots.map((item) => item?.chordSymbol ?? null)
+    )
+    expect(copy.slots[0]?.id).not.toBe(first.slots[0]?.id)
+
+    const missing = duplicateBar(song, section.id, 'nope')
+    expect(missing.sections[0].bars).toHaveLength(1)
+  })
+
+  it('swaps two measures in the same section', () => {
+    const song = songWithSlots([
+      'Em7',
+      'A7',
+      'DΔ7',
+      'GΔ7',
+      'CΔ7',
+      'FΔ7',
+      'BbΔ7',
+      'EbΔ7',
+      'AbΔ7',
+    ])
+    const section = song.sections[0]
+    expect(section.bars).toHaveLength(3)
+    const [first, second, third] = section.bars
+    const swapped = moveBar(
+      song,
+      { sectionId: section.id, barId: first.id },
+      { sectionId: section.id, beforeBarId: third.id }
+    )
+    expect(swapped.sections[0].bars.map((bar) => bar.id)).toEqual([
+      third.id,
+      second.id,
+      first.id,
+    ])
+    expect(swapped.sections[0].bars[0].slots[0]?.chordSymbol).toBe('AbΔ7')
+    expect(swapped.sections[0].bars[2].slots[0]?.chordSymbol).toBe('Em7')
+  })
+
+  it('leaves the song unchanged when dropping a measure on itself', () => {
+    const song = songWithSlots(['Em7'])
+    const section = song.sections[0]
+    const bar = section.bars[0]
+    expect(
+      moveBar(
+        song,
+        { sectionId: section.id, barId: bar.id },
+        { sectionId: section.id, beforeBarId: bar.id }
+      )
+    ).toBe(song)
+  })
+
+  it('places a slot and reports a stable location key', () => {
+    const song = createSong()
+    const location = firstEmptyLocation(song)!
+    const next = placeSlot(song, location, slot({ chordSymbol: 'A7' }))
+    expect(countSlots(next)).toBe(1)
+    expect(locationKey(location)).toBe(
+      `${location.sectionId}:${location.barId}:${location.slotIndex}`
+    )
+    expect(locationsEqual(location, location)).toBe(true)
+  })
+
+  it('exports sections, bars, and notes as text', () => {
+    let song = songWithSlots(['Em7', 'A7'])
+    const section = song.sections[0]
+    const bar = section.bars[0]
+    song = {
+      ...song,
+      name: 'Tune',
+      bpm: 120,
+      playback: 'arp-up',
+      sections: [
+        {
+          ...section,
+          name: 'Verse',
+          note: 'keep it sparse',
+          bars: [
+            {
+              ...bar,
+              slots: bar.slots.map((s, i) =>
+                i === 0 && s ? { ...s, note: 'bass on 1' } : s
+              ),
+            },
+          ],
+        },
+      ],
+    }
+    const text = exportSong(song)
+    expect(text).toContain('Tune')
+    expect(text).toContain('120 bpm · arp-up')
+    expect(text).toContain('m1 (4).')
+    expect(text).toContain('[Verse]')
+    expect(text).toContain('keep it sparse')
+    expect(text).toContain('Em7')
+    expect(text).toContain('Em7: bass on 1')
+  })
+
+  it('parses and formats strum patterns', () => {
+    expect(parseStrumPattern(undefined)).toEqual(['d'])
+    expect(parseStrumPattern('D-U-x')).toEqual(['d', 'u', 'x'])
+    expect(normalizeStrumPattern('')).toBeUndefined()
+    expect(normalizeStrumPattern('Dudu')).toBe('dudu')
+    expect(formatStrumPattern('ddudud')).toBe('D-D-U-U-D-U')
+  })
+
+  it('patches a slot feel and can return it to the song default', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const overridden = patchSlot(song, location, {
+      playback: 'arp-down',
+      strumPattern: 'du',
+    })
+    expect(overridden.sections[0].bars[0].slots[0]?.playback).toBe('arp-down')
+    expect(overridden.sections[0].bars[0].slots[0]?.strumPattern).toBe('du')
+
+    const cleared = patchSlot(overridden, location, {
+      playback: undefined,
+      strumPattern: undefined,
+    })
+    expect(cleared.sections[0].bars[0].slots[0]?.playback).toBeUndefined()
+    expect(cleared.sections[0].bars[0].slots[0]?.strumPattern).toBeUndefined()
+  })
+
+  it('bumps a slot up an octave and still hydrates the high-fret tab', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const before = hydrateSlot(song.sections[0].bars[0].slots[0]!)
+    expect(before.fingering).not.toBeNull()
+
+    const up = shiftSlotOctave(song, location, 12)
+    const shifted = up.sections[0].bars[0].slots[0]
+    expect(shifted?.tab).not.toBe(song.sections[0].bars[0].slots[0]?.tab)
+    expect(shifted?.tab.split('-').some((part) => Number(part) >= 12)).toBe(true)
+
+    const hydrated = hydrateSlot(shifted!)
+    expect(hydrated.fingering).not.toBeNull()
+    expect(hydrated.fingering!.lowestFret).toBe(before.fingering!.lowestFret + 12)
+
+    const back = shiftSlotOctave(up, location, -12)
+    expect(back.sections[0].bars[0].slots[0]?.tab).toBe(
+      song.sections[0].bars[0].slots[0]?.tab
+    )
+  })
+})
+
+describe('persistence and migration', () => {
+  const store: Record<string, string> = {}
+
+  beforeEach(() => {
+    for (const key of Object.keys(store)) delete store[key]
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value
+      },
+      removeItem: (key: string) => {
+        delete store[key]
+      },
+      clear: () => {
+        for (const key of Object.keys(store)) delete store[key]
+      },
+    })
+  })
+
+  it('migrates a v1 linear sequence into packed bars', () => {
+    store[LEGACY_STORAGE_KEY] = JSON.stringify({
+      activeSongId: 'song-1',
+      songs: [
+        {
+          id: 'song-1',
+          name: 'Old tune',
+          createdAt: 1,
+          updatedAt: 2,
+          entries: [
+            {
+              id: 'a',
+              chordSymbol: 'Em7',
+              groupId: 'V-2',
+              inversion: 0,
+              tab: 'x-7-9-7-8-x',
+            },
+            {
+              id: 'b',
+              chordSymbol: 'A7',
+              groupId: 'V-2',
+              inversion: 0,
+              tab: '5-x-6-6-5-x',
+            },
+            {
+              id: 'c',
+              chordSymbol: 'DΔ7',
+              groupId: 'V-1',
+              inversion: 1,
+              tab: 'x-5-4-6-5-x',
+            },
+          ],
+        },
+      ],
+    })
+
+    const loaded = loadState()
+    expect(loaded.songs).toHaveLength(1)
+    const song = loaded.songs[0]
+    expect(song.bpm).toBe(DEFAULT_BPM)
+    expect(song.playback).toBe('strum')
+    expect(countSlots(song)).toBe(3)
+    expect(song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'A7',
+      'DΔ7',
+      null,
+    ])
+  })
+
+  it('round-trips a v2 song through localStorage', () => {
+    const song = songWithSlots(['CΔ7'])
+    saveState({ songs: [song], activeSongId: song.id })
+    expect(store[STORAGE_KEY]).toBeTruthy()
+
+    const loaded = loadState()
+    expect(loaded.activeSongId).toBe(song.id)
+    expect(loaded.songs[0].sections[0].bars[0].slots[0]?.chordSymbol).toBe('CΔ7')
+    expect(loaded.songs[0].sections[0].bars[0].slots).toHaveLength(4)
+  })
+
+  it('keeps different step counts on each stored measure', () => {
+    const song = createSong('Mixed')
+    const first = setBarSteps(song, song.sections[0].bars[0].id, 3)
+    const secondBar = {
+      ...first.sections[0].bars[0],
+      id: 'm2',
+      slots: Array.from({ length: 7 }, () => null),
+    }
+    const mixed: Song = {
+      ...first,
+      sections: [
+        {
+          ...first.sections[0],
+          bars: [first.sections[0].bars[0], secondBar],
+        },
+      ],
+    }
+    saveState({ songs: [mixed], activeSongId: mixed.id })
+    const loaded = loadState()
+    expect(loaded.songs[0].sections[0].bars[0].slots).toHaveLength(3)
+    expect(loaded.songs[0].sections[0].bars[1].slots).toHaveLength(7)
+  })
+
+  it('clamps stored tempos and rejects unknown playback styles', () => {
+    store[STORAGE_KEY] = JSON.stringify({
+      activeSongId: 's',
+      songs: [
+        {
+          id: 's',
+          name: 'Wild',
+          bpm: 999,
+          playback: 'scramble',
+          sections: [emptySection('A')],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    })
+    const loaded = loadState()
+    expect(loaded.songs[0].bpm).toBe(220)
+    expect(loaded.songs[0].playback).toBe('strum')
+  })
+
+  it('keeps a song strum pattern and per-slot feel overrides', () => {
+    const song = songWithSlots(['Em7'])
+    const section = song.sections[0]
+    const bar = section.bars[0]
+    store[STORAGE_KEY] = JSON.stringify({
+      activeSongId: song.id,
+      songs: [
+        {
+          ...song,
+          strumPattern: 'Dudu',
+          sections: [
+            {
+              ...section,
+              bars: [
+                {
+                  ...bar,
+                  slots: bar.slots.map((item, index) =>
+                    index === 0 && item
+                      ? { ...item, playback: 'arp-up', strumPattern: 'dxdx' }
+                      : item
+                  ),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const loaded = loadState()
+    expect(loaded.songs[0].strumPattern).toBe('dudu')
+    expect(loaded.songs[0].sections[0].bars[0].slots[0]?.playback).toBe('arp-up')
+    expect(loaded.songs[0].sections[0].bars[0].slots[0]?.strumPattern).toBe(
+      'dxdx'
+    )
+  })
+})
