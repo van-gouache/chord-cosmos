@@ -3,10 +3,12 @@
  * for each note labelled with its scale degree.
  */
 
-import { useMemo } from 'react'
+import { useMemo, type MouseEvent, type PointerEvent } from 'react'
 
-import { fretWindow } from './fretWindow'
-import { STRING_COUNT, type Fingering } from '../theory/fretboard'
+import { diagramFretWindow } from './fretWindow'
+import { INTERVAL_OPTIONS } from '../theory/chords'
+import { STANDARD_TUNING, STRING_COUNT, type Fingering } from '../theory/fretboard'
+import { mod12 } from '../theory/pitch'
 import type { VoicingShape } from '../theory/vsystem'
 
 export type DiagramSize = 'sm' | 'md' | 'lg' | 'seq' | 'present'
@@ -17,6 +19,14 @@ interface Props {
   size?: DiagramSize
   /** Draw the scale degree inside each dot. */
   showDegrees?: boolean
+  /** Extra hollow markers on empty string/fret cells. */
+  highlightedNotes?: readonly { string: number; fret: number }[]
+  /** When set, clicking an empty cell toggles an outline there. */
+  onToggleNote?: (note: { string: number; fret: number }) => void
+  /** Extra fret rows toward the nut. */
+  extendLow?: number
+  /** Extra fret rows toward the body. */
+  extendHigh?: number
   className?: string
 }
 
@@ -97,14 +107,25 @@ export function ChordDiagram({
   shape,
   size = 'md',
   showDegrees = true,
+  highlightedNotes,
+  onToggleNote,
+  extendLow,
+  extendHigh,
   className,
 }: Props) {
   const s = SIZES[size]
 
-  const { startFret, fretRows, showNut } = useMemo(
-    () => fretWindow(fingering),
-    [fingering]
+  const box = useMemo(
+    () =>
+      diagramFretWindow(fingering, {
+        highlightedFrets: highlightedNotes?.map((note) => note.fret),
+        extendLow,
+        extendHigh,
+      }),
+    [fingering, highlightedNotes, extendLow, extendHigh]
   )
+
+  const { startFret, fretRows, showNut } = box
 
   const gridWidth = s.stringGap * (STRING_COUNT - 1)
   const gridHeight = s.fretGap * fretRows
@@ -116,6 +137,7 @@ export function ChordDiagram({
   /** Vertical centre of the given fret's cell. */
   const y = (fret: number) =>
     s.padTop + (fret - startFret + 0.5) * s.fretGap
+  const markerY = s.padTop - s.markerFont * 0.7
 
   const toneOf = (voice: number) => shape.voiceTones[voice]
   const degreeOf = (voice: number) => toneOf(voice)?.degree ?? ''
@@ -123,13 +145,131 @@ export function ChordDiagram({
 
   const playedStrings = new Set(fingering.notes.map((n) => n.string))
   const noteByString = new Map(fingering.notes.map((n) => [n.string, n]))
+  const occupied = new Set(
+    fingering.notes.map((note) => cellKey(note.string, note.fret))
+  )
+  const outlined = new Set(
+    (highlightedNotes ?? [])
+      .filter((note) => !occupied.has(cellKey(note.string, note.fret)))
+      .map((note) => cellKey(note.string, note.fret))
+  )
+  const interactive = Boolean(onToggleNote)
+  const rootPc = rootPitchClass(fingering, shape)
+  const noteHits: NoteHit[] = []
 
-  return (
+  if (interactive) {
+    for (let stringIndex = 0; stringIndex < STRING_COUNT; stringIndex++) {
+      if (!occupied.has(cellKey(stringIndex, 0))) {
+        noteHits.push({
+          stringIndex,
+          fret: 0,
+          cx: x(stringIndex),
+          cy: markerY,
+          r: s.dot * 0.9,
+          cellW: s.stringGap,
+          cellH: Math.max(s.dot * 2.4, s.markerFont * 1.8),
+        })
+      }
+      for (let row = 0; row < fretRows; row++) {
+        const fret = startFret + row
+        if (occupied.has(cellKey(stringIndex, fret))) continue
+        noteHits.push({
+          stringIndex,
+          fret,
+          cx: x(stringIndex),
+          cy: y(fret),
+          r: s.dot,
+          cellW: s.stringGap,
+          cellH: s.fretGap,
+        })
+      }
+    }
+  }
+
+  const renderDot = (
+    stringIndex: number,
+    cx: number,
+    cy: number,
+    radius: number,
+    fontSize: number
+  ) => {
+    const voice = noteByString.get(stringIndex)?.voice ?? 0
+    const style = styleOf(voice)
+    const label = degreeOf(voice)
+
+    const mark = showDegrees ? (
+      <>
+        <circle cx={cx} cy={cy} r={radius} className={style.fill} />
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize}
+          fontWeight={700}
+          className={style.text}
+        >
+          {label}
+        </text>
+      </>
+    ) : (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.9}
+        className={style.stroke}
+      />
+    )
+
+    return <g key={`dot-${stringIndex}`}>{mark}</g>
+  }
+
+  const renderOutline = (stringIndex: number, fret: number) => {
+    const cx = x(stringIndex)
+    const cy = fret === 0 ? markerY : y(fret)
+    const radius = fret === 0 ? s.dot * 0.9 : s.dot
+    const tone = toneAt(rootPc, stringIndex, fret)
+    return (
+      <g key={`outline-${stringIndex}-${fret}`}>
+        <circle
+          cx={cx}
+          cy={cy}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={Math.max(1.6, radius * 0.22)}
+          className={tone.style.stroke}
+        />
+        {showDegrees && (
+          <text
+            x={cx}
+            y={cy}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={fret === 0 ? s.font * 0.92 : s.font}
+            fontWeight={700}
+            className={tone.style.fill}
+          >
+            {tone.degree}
+          </text>
+        )}
+      </g>
+    )
+  }
+
+  const svg = (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       width={width}
       height={height}
-      className={className}
+      className={
+        interactive
+          ? 'pointer-events-none h-auto w-full'
+          : (className ?? undefined)
+      }
       role="img"
       aria-label={`Chord diagram, ${fingering.strings
         .map((f) => (f === null ? 'muted' : `fret ${f}`))
@@ -197,7 +337,7 @@ export function ChordDiagram({
       {/* Open / muted markers above the nut */}
       {Array.from({ length: STRING_COUNT }, (_, i) => {
         const fret = fingering.strings[i]
-        const markerY = s.padTop - s.markerFont * 0.7
+        if (fret === null && outlined.has(cellKey(i, 0))) return null
         if (fret === null) {
           const r = s.markerFont * 0.32
           return (
@@ -224,39 +364,8 @@ export function ChordDiagram({
           )
         }
         if (fret === 0) {
-          const voice = noteByString.get(i)?.voice ?? 0
-          const style = styleOf(voice)
           const r = showDegrees ? s.dot * 0.9 : s.markerFont * 0.42
-          return (
-            <g key={`open-${i}`}>
-              {showDegrees ? (
-                <>
-                  <circle cx={x(i)} cy={markerY} r={r} className={style.fill} />
-                  <text
-                    x={x(i)}
-                    y={markerY}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={s.font * 0.92}
-                    fontWeight={700}
-                    className={style.text}
-                  >
-                    {degreeOf(voice)}
-                  </text>
-                </>
-              ) : (
-                <circle
-                  cx={x(i)}
-                  cy={markerY}
-                  r={r}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.9}
-                  className={style.stroke}
-                />
-              )}
-            </g>
-          )
+          return renderDot(i, x(i), markerY, r, s.font * 0.92)
         }
         return null
       })}
@@ -284,31 +393,111 @@ export function ChordDiagram({
       {/* Fretted notes */}
       {fingering.notes
         .filter((n) => n.fret > 0)
-        .map((note) => (
-          <g key={`note-${note.string}`}>
-            <circle
-              cx={x(note.string)}
-              cy={y(note.fret)}
-              r={s.dot}
-              className={styleOf(note.voice).fill}
-            />
-            {showDegrees && (
-              <text
-                x={x(note.string)}
-                y={y(note.fret)}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={s.font}
-                fontWeight={700}
-                className={styleOf(note.voice).text}
-              >
-                {degreeOf(note.voice)}
-              </text>
-            )}
-          </g>
-        ))}
+        .map((note) =>
+          renderDot(
+            note.string,
+            x(note.string),
+            y(note.fret),
+            s.dot,
+            s.font
+          )
+        )}
+
+      {[...outlined].map((key) => {
+        const [stringIndex, fret] = key.split(':').map(Number)
+        return renderOutline(stringIndex, fret)
+      })}
     </svg>
   )
+
+  if (!interactive || !onToggleNote) return svg
+
+  return (
+    <div className={`pointer-events-none relative inline-block ${className ?? ''}`}>
+      {svg}
+      {noteHits.map((hit) => {
+        const highlighted = outlined.has(cellKey(hit.stringIndex, hit.fret))
+        const tone = toneAt(rootPc, hit.stringIndex, hit.fret)
+        return (
+          <button
+            key={`hit-${hit.stringIndex}-${hit.fret}`}
+            type="button"
+            data-highlight-note=""
+            draggable={false}
+            aria-pressed={highlighted}
+            aria-label={`${highlighted ? 'Remove' : 'Add'} ${tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
+            className="pointer-events-auto absolute cursor-pointer touch-manipulation rounded-full border-0 bg-transparent p-0 hover:bg-white/10"
+            style={{
+              left: `${((hit.cx - hit.cellW / 2) / width) * 100}%`,
+              top: `${((hit.cy - hit.cellH / 2) / height) * 100}%`,
+              width: `${(hit.cellW / width) * 100}%`,
+              height: `${(hit.cellH / height) * 100}%`,
+            }}
+            onPointerDown={holdSlotDrag}
+            onMouseDown={holdSlotDrag}
+            onPointerUp={releaseSlotDrag}
+            onPointerCancel={releaseSlotDrag}
+            onMouseUp={releaseSlotDrag}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleNote({ string: hit.stringIndex, fret: hit.fret })
+            }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+type NoteHit = {
+  stringIndex: number
+  fret: number
+  cx: number
+  cy: number
+  r: number
+  cellW: number
+  cellH: number
+}
+
+function cellKey(stringIndex: number, fret: number): string {
+  return `${stringIndex}:${fret}`
+}
+
+function rootPitchClass(fingering: Fingering, shape: VoicingShape): number {
+  const root = fingering.notes.find(
+    (note) => shape.voiceTones[note.voice]?.degree === 'R'
+  )
+  const note = root ?? fingering.notes[0]
+  if (!note) return 0
+  const semitones = shape.voiceTones[note.voice]?.semitones ?? 0
+  return mod12(note.midi - semitones)
+}
+
+function toneAt(rootPc: number, stringIndex: number, fret: number) {
+  const midi = STANDARD_TUNING[stringIndex] + fret
+  const semitones = mod12(midi - rootPc)
+  const degree =
+    INTERVAL_OPTIONS.find((option) => option.semitones === semitones)?.degree ??
+    'R'
+  return { degree, style: intervalStyle(semitones) }
+}
+
+function holdSlotDrag(event: PointerEvent<HTMLElement> | MouseEvent<HTMLElement>) {
+  event.stopPropagation()
+  const slot = event.currentTarget.closest('[data-slot-cell]')
+  if (!(slot instanceof HTMLElement)) return
+  if (slot.dataset.dragLocked === '1') return
+  slot.dataset.dragLocked = '1'
+  slot.dataset.wasDraggable = slot.draggable ? '1' : '0'
+  slot.draggable = false
+}
+
+function releaseSlotDrag(event: PointerEvent<HTMLElement> | MouseEvent<HTMLElement>) {
+  const slot = event.currentTarget.closest('[data-slot-cell]')
+  if (!(slot instanceof HTMLElement) || slot.dataset.dragLocked !== '1') return
+  slot.draggable = slot.dataset.wasDraggable === '1'
+  delete slot.dataset.dragLocked
+  delete slot.dataset.wasDraggable
 }
 
 const INTERVAL_STYLE: Record<

@@ -27,10 +27,15 @@ import {
   lastBarSteps,
   loadState,
   moveSlot,
+  nextEmptyAfter,
   normalizeSong,
   patchSlot,
   placeSlot,
+  resolveAddLocation,
+  slotAt,
   shiftSlotOctave,
+  toggleSlotHighlight,
+  adjustSlotFretExtend,
   readImportedSongs,
   saveState,
   setBarSteps,
@@ -143,18 +148,37 @@ export function useSongs() {
   }, [activeSongId, commitSongs])
 
   const addVoicing = useCallback(
-    (voicing: Voicing) => {
-      if (!activeSong) return
-      updateSong(activeSong.id, (song) => {
-        const prepared = appendBarIfNeeded(song)
-        return placeSlot(
+    (
+      voicing: Voicing,
+      preferred?: SlotLocation | null
+    ): { location: SlotLocation; nextSelection: SlotLocation } | null => {
+      const current =
+        songsRef.current.find((song) => song.id === activeSongId) ??
+        songsRef.current[0]
+      if (!current) return null
+      let placed: { location: SlotLocation; nextSelection: SlotLocation } | null =
+        null
+      updateSong(current.id, (song) => {
+        const prepared = resolveAddLocation(song, preferred)
+        const replacing = Boolean(slotAt(prepared.song, prepared.location))
+        const next = placeSlot(
           prepared.song,
           prepared.location,
           slotFromVoicing(voicing)
         )
+        placed = {
+          location: prepared.location,
+          nextSelection: replacing
+            ? prepared.location
+            : (nextEmptyAfter(next, prepared.location) ??
+              firstEmptyLocation(next) ??
+              prepared.location),
+        }
+        return next
       })
+      return placed
     },
-    [activeSong, updateSong]
+    [activeSongId, updateSong]
   )
 
   const placeIncoming = useCallback(
@@ -210,6 +234,30 @@ export function useSongs() {
     (location: SlotLocation, patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => patchSlot(song, location, patch))
+    },
+    [activeSong, updateSong]
+  )
+
+  const toggleHighlight = useCallback(
+    (location: SlotLocation, note: { string: number; fret: number }) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        toggleSlotHighlight(song, location, note)
+      )
+    },
+    [activeSong, updateSong]
+  )
+
+  const extendFrets = useCallback(
+    (
+      location: SlotLocation,
+      edge: 'low' | 'high',
+      delta: number
+    ) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        adjustSlotFretExtend(song, location, edge, delta)
+      )
     },
     [activeSong, updateSong]
   )
@@ -446,6 +494,8 @@ export function useSongs() {
     duplicateSlot,
     setSlotNote,
     setSlotFeel,
+    toggleHighlight,
+    extendFrets,
     shiftSlotOctave: shiftSlotOctaveBy,
     addBar,
     duplicateBar: duplicateBarBy,

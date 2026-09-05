@@ -1,4 +1,4 @@
-import type { Fingering } from '../theory/fretboard'
+import { MAX_PLAYABLE_FRET, type Fingering } from '../theory/fretboard'
 
 export interface FretWindow {
   /** First fret drawn in the box. */
@@ -29,5 +29,40 @@ export function fretWindow(fingering: Fingering): FretWindow {
     startFret,
     fretRows: Math.max(4, highest - startFret + 1),
     showNut: startFret === 1,
+  }
+}
+
+export interface DiagramFretWindow extends FretWindow {
+  canExtendLow: boolean
+  canExtendHigh: boolean
+}
+
+/** Tight voicing box, then extra rows for outlines and user expand buttons. */
+export function diagramFretWindow(
+  fingering: Fingering,
+  options: {
+    highlightedFrets?: readonly number[]
+    extendLow?: number
+    extendHigh?: number
+    maxFret?: number
+  } = {}
+): DiagramFretWindow {
+  const maxFret = options.maxFret ?? MAX_PLAYABLE_FRET
+  const base = fretWindow(fingering)
+  const extras = (options.highlightedFrets ?? []).filter((fret) => fret > 0)
+  let lo = extras.length > 0 ? Math.min(base.startFret, ...extras) : base.startFret
+  let hi =
+    extras.length > 0
+      ? Math.max(base.startFret + base.fretRows - 1, ...extras)
+      : base.startFret + base.fretRows - 1
+  lo = Math.max(1, lo - Math.max(0, options.extendLow ?? 0))
+  hi = Math.min(maxFret, hi + Math.max(0, options.extendHigh ?? 0))
+  if (hi < lo) hi = lo
+  return {
+    startFret: lo,
+    fretRows: Math.max(4, hi - lo + 1),
+    showNut: lo === 1,
+    canExtendLow: lo > 1,
+    canExtendHigh: hi < maxFret,
   }
 }

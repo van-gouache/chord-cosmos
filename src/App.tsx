@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { ArpeggioChart } from './components/ArpeggioChart'
 import { ChordInput } from './components/ChordInput'
+import { FretboardBuilder } from './components/FretboardBuilder'
 import { SplashScreen } from './components/SplashScreen'
 import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
 import { unlockAudio } from './audio/player'
+import { locationExists, type SlotLocation } from './state/songs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
 import { generateAllTriads } from './theory/triads'
@@ -15,9 +18,10 @@ export default function App() {
   const [input, setInput] = useState('E-7')
   const [requestedGroupId, setRequestedGroupId] = useState('V-2')
   const [requestedTriadId, setRequestedTriadId] = useState('Close')
-  const [workshopTab, setWorkshopTab] = useState<'vsystem' | 'triads'>('vsystem')
+  const [workshopTab, setWorkshopTab] = useState<WorkshopTab>('vsystem')
   const [qualityNonce, setQualityNonce] = useState(0)
   const [selectedVoicing, setSelectedVoicing] = useState<Voicing | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<SlotLocation | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [workshopOpen, setWorkshopOpen] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
@@ -26,6 +30,13 @@ export default function App() {
   const usedBrowserFullscreen = useRef(false)
 
   const songs = useSongs()
+
+  useEffect(() => {
+    if (!selectedSlot) return
+    if (!songs.activeSong || !locationExists(songs.activeSong, selectedSlot)) {
+      setSelectedSlot(null)
+    }
+  }, [songs.activeSong, selectedSlot])
 
   const toggleFocus = useCallback(() => {
     setFocusMode((open) => {
@@ -91,9 +102,11 @@ export default function App() {
   const activeGroupId =
     workshopTab === 'triads' ? selectedTriadId : selectedGroupId
 
-  const changeWorkshopTab = (tab: 'vsystem' | 'triads') => {
+  const changeWorkshopTab = (tab: WorkshopTab) => {
     if (tab === workshopTab) return
+    const named = (value: WorkshopTab) => value === 'vsystem' || value === 'triads'
     setWorkshopTab(tab)
+    if (!(named(workshopTab) && named(tab))) return
     setQualityNonce((n) => n + 1)
     const root =
       chord?.rootName ?? /^[A-Ga-g][#b]*/.exec(input.trim())?.[0] ?? 'E'
@@ -109,7 +122,8 @@ export default function App() {
       : null
 
   const handleAdd = (voicing: Voicing) => {
-    songs.addVoicing(voicing)
+    const placed = songs.addVoicing(voicing, selectedSlot)
+    if (placed) setSelectedSlot(placed.nextSelection)
     setJustAdded(voicing.id)
     window.setTimeout(() => setJustAdded(null), 1400)
   }
@@ -136,7 +150,12 @@ export default function App() {
             slotCount={songs.slotCount}
             focusMode={focusMode}
             onToggleFocus={toggleFocus}
-            onSelectSong={songs.setActiveSongId}
+            selected={selectedSlot}
+            onSelectSlot={setSelectedSlot}
+            onSelectSong={(id) => {
+              songs.setActiveSongId(id)
+              setSelectedSlot(null)
+            }}
             onNewSong={songs.newSong}
             onDuplicateSong={songs.duplicateSong}
             onImportSongs={songs.importSongs}
@@ -152,6 +171,8 @@ export default function App() {
             onDuplicateSlot={songs.duplicateSlot}
             onSetSlotNote={songs.setSlotNote}
             onSetSlotFeel={songs.setSlotFeel}
+            onToggleHighlight={songs.toggleHighlight}
+            onExtendFrets={songs.extendFrets}
             onShiftSlotOctave={songs.shiftSlotOctave}
             onAddMeasure={songs.addBar}
             onDuplicateMeasure={songs.duplicateBar}
@@ -182,11 +203,17 @@ export default function App() {
                     Voicing workshop
                   </p>
                   <p className="mt-0.5 text-[11px] text-cosmos-500">
-                    {chord
-                      ? workshopTab === 'triads'
-                        ? `${triadGroups.filter((g) => !g.unreachable).length} of ${triadGroups.length} triad families for ${chord.symbol}`
-                        : `${groups.filter((g) => !g.unreachable).length} of 14 playable for ${chord.symbol}`
-                      : 'Type a chord to add shapes'}
+                    {workshopTab === 'build'
+                      ? 'Click frets to build a shape'
+                      : workshopTab === 'arp'
+                        ? chord
+                          ? `3 notes per string for ${chord.symbol}`
+                          : 'Type a chord to see its arpeggio'
+                        : chord
+                          ? workshopTab === 'triads'
+                            ? `${triadGroups.filter((g) => !g.unreachable).length} of ${triadGroups.length} triad families for ${chord.symbol}`
+                            : `${groups.filter((g) => !g.unreachable).length} of 14 playable for ${chord.symbol}`
+                          : 'Type a chord to add shapes'}
                   </p>
                 </div>
                 <button
@@ -222,19 +249,60 @@ export default function App() {
                   >
                     Triads
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => changeWorkshopTab('build')}
+                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                      workshopTab === 'build'
+                        ? 'bg-nebula-600 text-white'
+                        : 'text-cosmos-400 hover:text-white'
+                    }`}
+                  >
+                    Build
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changeWorkshopTab('arp')}
+                    className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                      workshopTab === 'arp'
+                        ? 'bg-nebula-600 text-white'
+                        : 'text-cosmos-400 hover:text-white'
+                    }`}
+                  >
+                    Arp
+                  </button>
                 </div>
 
+                {workshopTab === 'build' ? (
+                  <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
+                    <FretboardBuilder onAdd={handleAdd} />
+                  </div>
+                ) : (
                 <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                   <ChordInput
                     value={input}
                     onChange={setInput}
                     chord={chord}
                     error={error}
-                    mode={workshopTab}
+                    mode={workshopTab === 'triads' ? 'triads' : 'vsystem'}
                     qualityNonce={qualityNonce}
                   />
                 </div>
+                )}
 
+                {workshopTab === 'arp' && (
+                  <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
+                    {chord ? (
+                      <ArpeggioChart chord={chord} />
+                    ) : (
+                      <p className="p-6 text-center text-sm text-cosmos-400">
+                        Type a chord to see its 3-notes-per-string arpeggio.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {workshopTab !== 'build' && workshopTab !== 'arp' && (
                 <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                   {chord ? (
                     workshopTab === 'triads' ? (
@@ -256,6 +324,7 @@ export default function App() {
                     </p>
                   )}
                 </div>
+                )}
 
                 {chord &&
                   workshopTab === 'vsystem' &&
@@ -305,3 +374,5 @@ export default function App() {
     </div>
   )
 }
+
+type WorkshopTab = 'vsystem' | 'triads' | 'build' | 'arp'

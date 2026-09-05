@@ -15,6 +15,8 @@ import {
   emptySection,
   exportSong,
   firstEmptyLocation,
+  nextEmptyAfter,
+  resolveAddLocation,
   loadState,
   locationKey,
   locationsEqual,
@@ -26,6 +28,9 @@ import {
   hydrateSlot,
   patchSlot,
   placeSlot,
+  toggleHighlightedNote,
+  toggleSlotHighlight,
+  adjustSlotFretExtend,
   shiftSlotOctave,
   playTimeline,
   readImportedSongs,
@@ -45,6 +50,7 @@ function slot(partial: Partial<SequenceSlot> & { chordSymbol: string }): Sequenc
     inversion: partial.inversion ?? 0,
     tab: partial.tab ?? 'x-7-9-7-8-x',
     note: partial.note ?? '',
+    highlightedNotes: partial.highlightedNotes,
   }
 }
 
@@ -181,6 +187,50 @@ describe('song grid helpers', () => {
     ])
   })
 
+  it('adds to the highlighted step even when an earlier beat is empty', () => {
+    const song = songWithSlots(['Em7'])
+    const bar = song.sections[0].bars[0]
+    const preferred = {
+      sectionId: song.sections[0].id,
+      barId: bar.id,
+      slotIndex: 3,
+    }
+    expect(firstEmptyLocation(song)?.slotIndex).toBe(1)
+    expect(resolveAddLocation(song, preferred).location.slotIndex).toBe(3)
+    expect(
+      resolveAddLocation(song, {
+        sectionId: song.sections[0].id,
+        barId: 'missing',
+        slotIndex: 0,
+      }).location.slotIndex
+    ).toBe(1)
+  })
+
+  it('keeps the highlighted step when replacing a filled chord', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const preferred = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    expect(resolveAddLocation(song, preferred).location.slotIndex).toBe(0)
+  })
+
+  it('walks forward to the next empty step after a fill', () => {
+    const song = songWithSlots(['Em7'])
+    const after = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 1,
+    }
+    const filled = placeSlot(
+      song,
+      after,
+      slot({ id: 'later', chordSymbol: 'DMaj7' })
+    )
+    expect(nextEmptyAfter(filled, after)?.slotIndex).toBe(2)
+  })
+
   it('finds the first empty beat and appends a bar when the grid is full', () => {
     const full = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7'])
     expect(firstEmptyLocation(full)).toBeNull()
@@ -253,11 +303,70 @@ describe('song grid helpers', () => {
   })
 
   it('clones a slot with a new id', () => {
-    const original = slot({ id: 'same', chordSymbol: 'Em7', note: 'hold' })
+    const original = slot({
+      id: 'same',
+      chordSymbol: 'Em7',
+      note: 'hold',
+      highlightedNotes: [
+        { string: 2, fret: 8 },
+        { string: 5, fret: 0 },
+      ],
+    })
     const copy = cloneSlot(original)
     expect(copy.id).not.toBe(original.id)
     expect(copy.chordSymbol).toBe('Em7')
     expect(copy.note).toBe('hold')
+    expect(copy.highlightedNotes).toEqual([
+      { string: 2, fret: 8 },
+      { string: 5, fret: 0 },
+    ])
+  })
+
+  it('toggles outlined notes on empty diagram cells', () => {
+    const mark = { string: 5, fret: 7 }
+    expect(toggleHighlightedNote(undefined, mark)).toEqual([mark])
+    expect(toggleHighlightedNote([mark], mark)).toBeUndefined()
+    expect(
+      toggleHighlightedNote(
+        [
+          { string: 1, fret: 5 },
+          { string: 4, fret: 8 },
+        ],
+        { string: 3, fret: 6 }
+      )
+    ).toEqual([
+      { string: 1, fret: 5 },
+      { string: 3, fret: 6 },
+      { string: 4, fret: 8 },
+    ])
+
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const highlighted = toggleSlotHighlight(song, location, mark)
+    expect(highlighted.sections[0].bars[0].slots[0]?.highlightedNotes).toEqual([
+      mark,
+    ])
+    const cleared = toggleSlotHighlight(highlighted, location, mark)
+    expect(cleared.sections[0].bars[0].slots[0]?.highlightedNotes).toBeUndefined()
+  })
+
+  it('adds and removes extra diagram fret rows', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const high = adjustSlotFretExtend(song, location, 'high', 2)
+    expect(high.sections[0].bars[0].slots[0]?.extendHigh).toBe(2)
+    const low = adjustSlotFretExtend(high, location, 'low', 1)
+    expect(low.sections[0].bars[0].slots[0]?.extendLow).toBe(1)
+    const clearedHigh = adjustSlotFretExtend(low, location, 'high', -2)
+    expect(clearedHigh.sections[0].bars[0].slots[0]?.extendHigh).toBeUndefined()
   })
 
   it('duplicates a measure immediately after the original', () => {
@@ -406,9 +515,11 @@ describe('song grid helpers', () => {
     const before = hydrateSlot(song.sections[0].bars[0].slots[0]!)
     expect(before.fingering).not.toBeNull()
 
-    const up = shiftSlotOctave(song, location, 12)
+    const marked = toggleSlotHighlight(song, location, { string: 5, fret: 8 })
+    const up = shiftSlotOctave(marked, location, 12)
     const shifted = up.sections[0].bars[0].slots[0]
     expect(shifted?.tab).not.toBe(song.sections[0].bars[0].slots[0]?.tab)
+    expect(shifted?.highlightedNotes).toEqual([{ string: 5, fret: 20 }])
     expect(shifted?.tab.split('-').some((part) => Number(part) >= 12)).toBe(true)
 
     const hydrated = hydrateSlot(shifted!)
@@ -419,6 +530,31 @@ describe('song grid helpers', () => {
     expect(back.sections[0].bars[0].slots[0]?.tab).toBe(
       song.sections[0].bars[0].slots[0]?.tab
     )
+  })
+
+  it('hydrates a hand-built fretboard chord from its tab', () => {
+    const song = createSong('Custom')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(
+      song,
+      location,
+      slot({
+        chordSymbol: 'C',
+        groupId: 'Custom',
+        tab: 'x-3-2-0-1-0',
+      })
+    )
+    const hydrated = hydrateSlot(placed.sections[0].bars[0].slots[0]!)
+    expect(hydrated.fingering?.notes).toHaveLength(5)
+    expect(hydrated.shape?.group.id).toBe('Custom')
+    expect(hydrated.shape?.voiceTones[0]?.degree).toBe('R')
+
+    const up = shiftSlotOctave(placed, location, 12)
+    expect(up.sections[0].bars[0].slots[0]?.tab).toBe('x-15-14-12-13-12')
   })
 })
 

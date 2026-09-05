@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fretWindow } from './fretWindow'
+import { diagramFretWindow, fretWindow } from './fretWindow'
 import { parseChord } from '../theory/chords'
 import { findFingerings, shiftFingering } from '../theory/fretboard'
 import { buildShape, V_GROUPS } from '../theory/vsystem'
@@ -78,5 +78,23 @@ describe('chord diagram fret window', () => {
     expect(window.startFret).toBe(highShape!.lowestFret)
     expect(window.showNut).toBe(false)
     expect(window.fretRows).toBeLessThanOrEqual(6)
+  })
+
+  it('grows the box toward the nut and the body', () => {
+    const chord = parseChord('E-7')
+    const shape = buildShape(chord.tones, V_GROUPS[1], 0)
+    const highShape = findFingerings(shape, chord.rootPc).find(
+      (f) => f.lowestFret >= 7 && !f.notes.some((n) => n.fret === 0)
+    )
+    expect(highShape).toBeDefined()
+    const base = fretWindow(highShape!)
+    const towardNut = diagramFretWindow(highShape!, { extendLow: 1 })
+    expect(towardNut.startFret).toBe(base.startFret - 1)
+    expect(towardNut.fretRows).toBe(base.fretRows + 1)
+
+    const towardBody = diagramFretWindow(highShape!, { extendHigh: 2 })
+    expect(towardBody.startFret).toBe(base.startFret)
+    expect(towardBody.fretRows).toBe(base.fretRows + 2)
+    expect(towardBody.canExtendHigh).toBe(true)
   })
 })

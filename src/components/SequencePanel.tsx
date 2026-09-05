@@ -35,6 +35,7 @@ import type { Fingering } from '../theory/fretboard'
 import type { VoicingShape } from '../theory/vsystem'
 import { inversionOrdinal } from '../theory/voicings'
 import { ChordDiagram, type DiagramSize } from './ChordDiagram'
+import { diagramFretWindow } from './fretWindow'
 import { SongManager } from './SongManager'
 
 const DRAG_MIME = 'application/x-chord-slot'
@@ -65,6 +66,15 @@ interface Props {
     location: SlotLocation,
     patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>
   ) => void
+  onToggleHighlight: (
+    location: SlotLocation,
+    note: { string: number; fret: number }
+  ) => void
+  onExtendFrets: (
+    location: SlotLocation,
+    edge: 'low' | 'high',
+    delta: number
+  ) => void
   onShiftSlotOctave: (location: SlotLocation, deltaFrets: number) => void
   onAddMeasure: (sectionId: string) => void
   onDuplicateMeasure: (sectionId: string, measureId: string) => void
@@ -82,6 +92,8 @@ interface Props {
   onSetPlayback: (playback: PlaybackStyle) => void
   onSetStrumPattern: (pattern: string | undefined) => void
   onClear: () => void
+  selected: SlotLocation | null
+  onSelectSlot: (location: SlotLocation | null) => void
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
@@ -106,6 +118,8 @@ export function SequencePanel({
   onDuplicateSlot,
   onSetSlotNote,
   onSetSlotFeel,
+  onToggleHighlight,
+  onExtendFrets,
   onShiftSlotOctave,
   onAddMeasure,
   onDuplicateMeasure,
@@ -120,6 +134,8 @@ export function SequencePanel({
   onSetPlayback,
   onSetStrumPattern,
   onClear,
+  selected,
+  onSelectSlot,
   focusMode,
   onToggleFocus,
 }: Props) {
@@ -135,7 +151,6 @@ export function SequencePanel({
     sectionId: string
     beforeBarId?: string | null
   } | null>(null)
-  const [selected, setSelected] = useState<SlotLocation | null>(null)
   const [copied, setCopied] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
   const [playbackOpen, setPlaybackOpen] = useState(false)
@@ -255,7 +270,7 @@ export function SequencePanel({
   const dropOn = (to: SlotLocation) => {
     if (dragFrom && !locationsEqual(dragFrom, to)) {
       onMoveSlot(dragFrom, to)
-      setSelected(to)
+      onSelectSlot(to)
     }
     setDragFrom(null)
     setDropTarget(null)
@@ -299,11 +314,11 @@ export function SequencePanel({
     sectionId: string,
     barId: string
   ) => {
-    if (isSlotDragTarget(event.target)) return
     if (focusMode || isInteractiveDragTarget(event.target)) {
       event.preventDefault()
       return
     }
+    if (isSlotDragTarget(event.target)) return
     event.dataTransfer.setData(
       MEASURE_DRAG_MIME,
       JSON.stringify({ sectionId, barId })
@@ -434,7 +449,7 @@ export function SequencePanel({
                 onClick={() => {
                   setManagerOpen(false)
                   setPlaybackOpen(false)
-                  setSelected(null)
+                  onSelectSlot(null)
                   onToggleFocus()
                 }}
                 className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
@@ -875,7 +890,7 @@ export function SequencePanel({
                               }
                               return
                             }
-                            setSelected(location)
+                            onSelectSlot(location)
                           }}
                           onPreview={() => {
                             if (!slot) return
@@ -894,6 +909,12 @@ export function SequencePanel({
                           onDuplicate={() => onDuplicateSlot(location)}
                           onNoteChange={(note) => onSetSlotNote(location, note)}
                           onFeelChange={(patch) => onSetSlotFeel(location, patch)}
+                          onToggleHighlight={(note) =>
+                            onToggleHighlight(location, note)
+                          }
+                          onExtendFrets={(edge, delta) =>
+                            onExtendFrets(location, edge, delta)
+                          }
                           onOctaveShift={(delta) => onShiftSlotOctave(location, delta)}
                           onDragStart={() => setDragFrom(location)}
                           onDragEnd={() => {
@@ -907,7 +928,7 @@ export function SequencePanel({
                             )
                             if (incoming) {
                               onPlaceIncoming(location, incoming)
-                              setSelected(location)
+                              onSelectSlot(location)
                               setDragFrom(null)
                               setDropTarget(null)
                               return
@@ -981,7 +1002,7 @@ export function SequencePanel({
           <p className="text-center text-xs text-cosmos-400">
             {focusMode
               ? 'This sequence has no chords yet.'
-              : `Add a voicing and it lands in the next empty step. Each measure can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
+              : `Add a voicing to the highlighted step, or the next empty one. Each measure can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
           </p>
         )}
       </div>
@@ -1011,6 +1032,8 @@ interface SlotCellProps {
   onDuplicate: () => void
   onNoteChange: (note: string) => void
   onFeelChange: (patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => void
+  onToggleHighlight: (note: { string: number; fret: number }) => void
+  onExtendFrets: (edge: 'low' | 'high', delta: number) => void
   onOctaveShift: (deltaFrets: number) => void
   onDragStart: () => void
   onDragEnd: () => void
@@ -1040,6 +1063,8 @@ function SlotCell({
   onDuplicate,
   onNoteChange,
   onFeelChange,
+  onToggleHighlight,
+  onExtendFrets,
   onOctaveShift,
   onDragStart,
   onDragEnd,
@@ -1067,6 +1092,15 @@ function SlotCell({
     onDrop(event)
   }
 
+  const fretBox =
+    slot && fingering
+      ? diagramFretWindow(fingering, {
+          highlightedFrets: slot.highlightedNotes?.map((note) => note.fret),
+          extendLow: slot.extendLow,
+          extendHigh: slot.extendHigh,
+        })
+      : null
+
   return (
     <div
       ref={cellRef}
@@ -1080,7 +1114,12 @@ function SlotCell({
             : 'Drop a shape here'
       }
       onDragStart={(event) => {
-        if (presenting || !slot) {
+        if (
+          presenting ||
+          !slot ||
+          isInteractiveDragTarget(event.target) ||
+          event.currentTarget.dataset.dragLocked === '1'
+        ) {
           event.preventDefault()
           return
         }
@@ -1122,24 +1161,46 @@ function SlotCell({
       {slot ? (
         <>
           <div
-            className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 items-center justify-center text-cosmos-200 ${
-              presenting ? '' : 'pointer-events-none'
-            }`}
+            className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 flex-col items-center justify-center text-cosmos-200`}
           >
-            {fingering && shape ? (
-              <ChordDiagram
-                fingering={fingering}
-                shape={shape}
-                size={diagramSize}
-                showDegrees
-                className={
-                  presenting
-                    ? 'h-auto w-full'
-                    : 'mx-auto h-auto w-full max-w-[11rem]'
-                }
+            {!presenting && fretBox && (
+              <FretExtendButtons
+                chordSymbol={slot.chordSymbol}
+                edge="low"
+                canPlus={fretBox.canExtendLow}
+                canMinus={(slot.extendLow ?? 0) > 0}
+                onAdjust={(delta) => onExtendFrets('low', delta)}
               />
-            ) : (
-              <span className="text-xs text-cosmos-600">?</span>
+            )}
+            <div className="pointer-events-none flex w-full items-center justify-center">
+              {fingering && shape ? (
+                <ChordDiagram
+                  fingering={fingering}
+                  shape={shape}
+                  size={diagramSize}
+                  showDegrees
+                  highlightedNotes={slot.highlightedNotes}
+                  extendLow={slot.extendLow}
+                  extendHigh={slot.extendHigh}
+                  onToggleNote={onToggleHighlight}
+                  className={
+                    presenting
+                      ? 'h-auto w-full'
+                      : 'mx-auto h-auto w-full max-w-[11rem]'
+                  }
+                />
+              ) : (
+                <span className="text-xs text-cosmos-600">?</span>
+              )}
+            </div>
+            {!presenting && fretBox && (
+              <FretExtendButtons
+                chordSymbol={slot.chordSymbol}
+                edge="high"
+                canPlus={fretBox.canExtendHigh}
+                canMinus={(slot.extendHigh ?? 0) > 0}
+                onAdjust={(delta) => onExtendFrets('high', delta)}
+              />
             )}
           </div>
           {presenting ? (
@@ -1389,6 +1450,49 @@ function sectionMeta(song: Song): string {
   return `${sections} section${sections === 1 ? '' : 's'} · ${measures} measure${
     measures === 1 ? '' : 's'
   }`
+}
+
+function FretExtendButtons({
+  chordSymbol,
+  edge,
+  canPlus,
+  canMinus,
+  onAdjust,
+}: {
+  chordSymbol: string
+  edge: 'low' | 'high'
+  canPlus: boolean
+  canMinus: boolean
+  onAdjust: (delta: number) => void
+}) {
+  const toward = edge === 'low' ? 'toward the nut' : 'toward the body'
+  const extra = edge === 'low' ? 'lower fret' : 'higher fret'
+  return (
+    <div
+      className="pointer-events-auto flex items-center justify-center gap-1 py-0.5"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        disabled={!canMinus}
+        aria-label={`Hide extra ${extra} on ${chordSymbol}`}
+        onClick={() => onAdjust(-1)}
+        className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
+      >
+        −
+      </button>
+      <button
+        type="button"
+        disabled={!canPlus}
+        aria-label={`Show one more fret ${toward} on ${chordSymbol}`}
+        onClick={() => onAdjust(1)}
+        className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
+      >
+        +
+      </button>
+    </div>
+  )
 }
 
 function MeasureStepsControl({

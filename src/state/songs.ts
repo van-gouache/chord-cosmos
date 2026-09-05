@@ -5,7 +5,15 @@
 
 import { tryParseChord } from '../theory/chords'
 import {
+  customShapeFromFingering,
+  fingeringFromCustomTab,
+  isCustomGroupId,
+  rootFromCustomSymbol,
+  shiftCustomFingering,
+} from '../theory/customVoicing'
+import {
   fingeringFromTab,
+  MAX_PLAYABLE_FRET,
   shiftFingering,
   tabLabel,
   type Fingering,
@@ -61,6 +69,19 @@ export interface SequenceSlot {
   playback?: PlaybackStyle
   /** Down/up/rest strokes for this step when it strums. */
   strumPattern?: string
+  /** Extra outline markers on empty string/fret cells of the diagram. */
+  highlightedNotes?: HighlightedNote[]
+  /** Extra fret rows toward the nut, beyond the automatic box. */
+  extendLow?: number
+  /** Extra fret rows toward the body, beyond the automatic box. */
+  extendHigh?: number
+}
+
+export interface HighlightedNote {
+  /** 0 = low E, 5 = high E. */
+  string: number
+  /** 0 = open. */
+  fret: number
 }
 
 export interface Bar {
@@ -264,7 +285,11 @@ export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
 }
 
 export function cloneSlot(slot: SequenceSlot): SequenceSlot {
-  return { ...slot, id: newId() }
+  return {
+    ...slot,
+    id: newId(),
+    highlightedNotes: slot.highlightedNotes?.map((note) => ({ ...note })),
+  }
 }
 
 /** Deep copy of a measure with fresh ids so it can sit beside the original. */
@@ -351,6 +376,18 @@ export function hydrateSlot(slot: SequenceSlot): {
   shape: VoicingShape | null
   fingering: Fingering | null
 } {
+  if (isCustomGroupId(slot.groupId)) {
+    const fingering = fingeringFromCustomTab(slot.tab)
+    if (!fingering) return { shape: null, fingering: null }
+    return {
+      shape: customShapeFromFingering(
+        fingering,
+        rootFromCustomSymbol(slot.chordSymbol)
+      ),
+      fingering,
+    }
+  }
+
   const { chord } = tryParseChord(slot.chordSymbol)
   if (!chord) return { shape: null, fingering: null }
 
@@ -391,9 +428,14 @@ export function shiftSlotOctave(
   if (!slot) return song
   const { fingering } = hydrateSlot(slot)
   if (!fingering) return song
-  const next = shiftFingering(fingering, deltaFrets)
+  const next = isCustomGroupId(slot.groupId)
+    ? shiftCustomFingering(fingering, deltaFrets)
+    : shiftFingering(fingering, deltaFrets)
   if (!next) return song
-  return patchSlot(song, location, { tab: tabLabel(next) })
+  return patchSlot(song, location, {
+    tab: tabLabel(next),
+    highlightedNotes: shiftHighlightedNotes(slot.highlightedNotes, deltaFrets),
+  })
 }
 
 export function countSlots(song: Song): number {
@@ -425,6 +467,55 @@ export function firstEmptyLocation(song: Song): SlotLocation | null {
       const slotIndex = bar.slots.findIndex((s) => s === null)
       if (slotIndex >= 0) {
         return { sectionId: section.id, barId: bar.id, slotIndex }
+      }
+    }
+  }
+  return null
+}
+
+export function locationExists(song: Song, location: SlotLocation): boolean {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  return Boolean(
+    bar && location.slotIndex >= 0 && location.slotIndex < bar.slots.length
+  )
+}
+
+export function slotAt(
+  song: Song,
+  location: SlotLocation
+): SequenceSlot | null {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  return bar?.slots[location.slotIndex] ?? null
+}
+
+/** Highlighted step if it still exists; otherwise the next empty / new bar. */
+export function resolveAddLocation(
+  song: Song,
+  preferred?: SlotLocation | null
+): { song: Song; location: SlotLocation } {
+  if (preferred && locationExists(song, preferred)) {
+    return { song, location: preferred }
+  }
+  return appendBarIfNeeded(song)
+}
+
+/** Next empty step after `after` in play order, or null if none remain. */
+export function nextEmptyAfter(
+  song: Song,
+  after: SlotLocation
+): SlotLocation | null {
+  let passed = false
+  for (const section of song.sections) {
+    for (const bar of section.bars) {
+      for (let slotIndex = 0; slotIndex < bar.slots.length; slotIndex++) {
+        const location = { sectionId: section.id, barId: bar.id, slotIndex }
+        if (!passed) {
+          if (locationsEqual(location, after)) passed = true
+          continue
+        }
+        if (bar.slots[slotIndex] === null) return location
       }
     }
   }
@@ -518,7 +609,61 @@ export function patchSlot(
   if ('strumPattern' in patch && patch.strumPattern === undefined) {
     delete next.strumPattern
   }
+  if ('highlightedNotes' in patch && patch.highlightedNotes === undefined) {
+    delete next.highlightedNotes
+  }
+  if ('extendLow' in patch && patch.extendLow === undefined) delete next.extendLow
+  if ('extendHigh' in patch && patch.extendHigh === undefined) {
+    delete next.extendHigh
+  }
   return placeSlot(song, location, next)
+}
+
+export type FretExtendEdge = 'low' | 'high'
+
+export function adjustSlotFretExtend(
+  song: Song,
+  location: SlotLocation,
+  edge: FretExtendEdge,
+  delta: number
+): Song {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  const slot = bar?.slots[location.slotIndex]
+  if (!slot || !Number.isInteger(delta) || delta === 0) return song
+  const field = edge === 'low' ? 'extendLow' : 'extendHigh'
+  const next = (slot[field] ?? 0) + delta
+  if (next < 0 || next > MAX_PLAYABLE_FRET) return song
+  return patchSlot(song, location, {
+    [field]: next === 0 ? undefined : next,
+  })
+}
+
+export function toggleHighlightedNote(
+  highlighted: HighlightedNote[] | undefined,
+  note: HighlightedNote
+): HighlightedNote[] | undefined {
+  if (!isHighlightNote(note)) return highlighted
+  const current = highlighted ?? []
+  const exists = current.some((item) => sameHighlight(item, note))
+  const next = exists
+    ? current.filter((item) => !sameHighlight(item, note))
+    : [...current, note].sort(compareHighlights)
+  return next.length === 0 ? undefined : next
+}
+
+export function toggleSlotHighlight(
+  song: Song,
+  location: SlotLocation,
+  note: HighlightedNote
+): Song {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  const slot = bar?.slots[location.slotIndex]
+  if (!slot) return song
+  return patchSlot(song, location, {
+    highlightedNotes: toggleHighlightedNote(slot.highlightedNotes, note),
+  })
 }
 
 export function locationsEqual(a: SlotLocation, b: SlotLocation): boolean {
@@ -648,7 +793,72 @@ function readSlot(value: unknown): SequenceSlot | null {
     note: typeof s.note === 'string' ? s.note : '',
     playback: isPlayback(s.playback) ? s.playback : undefined,
     strumPattern: normalizeStrumPattern(s.strumPattern),
+    highlightedNotes: readHighlightedNotes(s.highlightedNotes),
+    extendLow: readExtraCount(s.extendLow),
+    extendHigh: readExtraCount(s.extendHigh),
   }
+}
+
+function readExtraCount(value: unknown): number | undefined {
+  if (!Number.isInteger(value) || (value as number) < 1) return undefined
+  return Math.min(MAX_PLAYABLE_FRET, value as number)
+}
+
+function readHighlightedNotes(value: unknown): HighlightedNote[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const notes = value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const note = item as Partial<HighlightedNote>
+      const next = { string: note.string, fret: note.fret }
+      return isHighlightNote(next) ? next : null
+    })
+    .filter((item): item is HighlightedNote => item !== null)
+  const unique = notes.filter(
+    (note, index) => notes.findIndex((other) => sameHighlight(other, note)) === index
+  )
+  unique.sort(compareHighlights)
+  return unique.length > 0 ? unique : undefined
+}
+
+function isHighlightNote(note: Partial<HighlightedNote> | null): note is HighlightedNote {
+  if (!note) return false
+  const string = note.string
+  const fret = note.fret
+  return (
+    Number.isInteger(string) &&
+    Number.isInteger(fret) &&
+    string !== undefined &&
+    fret !== undefined &&
+    string >= 0 &&
+    string <= 5 &&
+    fret >= 0 &&
+    fret <= MAX_PLAYABLE_FRET
+  )
+}
+
+function sameHighlight(a: HighlightedNote, b: HighlightedNote): boolean {
+  return a.string === b.string && a.fret === b.fret
+}
+
+function compareHighlights(a: HighlightedNote, b: HighlightedNote): number {
+  return a.string - b.string || a.fret - b.fret
+}
+
+function shiftHighlightedNotes(
+  highlighted: HighlightedNote[] | undefined,
+  deltaFrets: number
+): HighlightedNote[] | undefined {
+  if (!highlighted?.length) return highlighted
+  const next = highlighted
+    .map((note) => {
+      if (note.fret === 0) return note
+      const fret = note.fret + deltaFrets
+      if (fret < 1 || fret > MAX_PLAYABLE_FRET) return null
+      return { string: note.string, fret }
+    })
+    .filter((note): note is HighlightedNote => note !== null)
+  return next.length > 0 ? next : undefined
 }
 
 function readBarSlots(value: unknown): (SequenceSlot | null)[] {
