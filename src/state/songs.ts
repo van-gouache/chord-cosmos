@@ -1,5 +1,5 @@
 /**
- * Songs are a grid: sections contain measures, and each measure is divided
+ * Songs are a grid: sections contain groups, and each group is divided
  * into a configurable number of steps. A step holds one chord (or a rest).
  */
 
@@ -450,10 +450,10 @@ export function countMeasures(song: Song): number {
 export function songSummary(song: Song): string {
   const chords = countSlots(song)
   const sections = song.sections.length
-  const measures = countMeasures(song)
+  const groups = countMeasures(song)
   return `${chords} chord${chords === 1 ? '' : 's'} · ${sections} section${
     sections === 1 ? '' : 's'
-  } · ${measures} measure${measures === 1 ? '' : 's'} · ${song.bpm} bpm`
+  } · ${groups} group${groups === 1 ? '' : 's'} · ${song.bpm} bpm`
 }
 
 export function firstEmptyLocation(song: Song): SlotLocation | null {

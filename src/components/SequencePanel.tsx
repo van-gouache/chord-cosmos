@@ -8,7 +8,7 @@ import {
 } from 'react'
 
 import { playArrangement, playBeat, stopAll } from '../audio/player'
-import { displayChordSymbol } from '../theory/chords'
+import { displayChordSymbol, tryParseChord } from '../theory/chords'
 import {
   DEFAULT_STRUM_PATTERN,
   MAX_BPM,
@@ -77,19 +77,19 @@ interface Props {
     delta: number
   ) => void
   onShiftSlotOctave: (location: SlotLocation, deltaFrets: number) => void
-  onAddMeasure: (sectionId: string) => void
-  onDuplicateMeasure: (sectionId: string, measureId: string) => void
-  onMoveMeasure: (
+  onAddGroup: (sectionId: string) => void
+  onDuplicateGroup: (sectionId: string, measureId: string) => void
+  onMoveGroup: (
     from: { sectionId: string; barId: string },
     to: { sectionId: string; beforeBarId?: string | null }
   ) => void
-  onRemoveMeasure: (sectionId: string, measureId: string) => void
+  onRemoveGroup: (sectionId: string, measureId: string) => void
   onAddSection: () => void
   onRenameSection: (sectionId: string, name: string) => void
   onSetSectionNote: (sectionId: string, note: string) => void
   onRemoveSection: (sectionId: string) => void
   onSetBpm: (bpm: number) => void
-  onSetMeasureSteps: (barId: string, steps: number) => void
+  onSetGroupSteps: (barId: string, steps: number) => void
   onSetPlayback: (playback: PlaybackStyle) => void
   onSetStrumPattern: (pattern: string | undefined) => void
   onClear: () => void
@@ -122,16 +122,16 @@ export function SequencePanel({
   onToggleHighlight,
   onExtendFrets,
   onShiftSlotOctave,
-  onAddMeasure,
-  onDuplicateMeasure,
-  onMoveMeasure,
-  onRemoveMeasure,
+  onAddGroup,
+  onDuplicateGroup,
+  onMoveGroup,
+  onRemoveGroup,
   onAddSection,
   onRenameSection,
   onSetSectionNote,
   onRemoveSection,
   onSetBpm,
-  onSetMeasureSteps,
+  onSetGroupSteps,
   onSetPlayback,
   onSetStrumPattern,
   onClear,
@@ -286,7 +286,7 @@ export function SequencePanel({
       (dragMeasureFrom.sectionId !== to.sectionId ||
         dragMeasureFrom.barId !== to.beforeBarId)
     ) {
-      onMoveMeasure(dragMeasureFrom, to)
+      onMoveGroup(dragMeasureFrom, to)
     }
     setDragMeasureFrom(null)
     setDropMeasureTarget(null)
@@ -705,7 +705,7 @@ export function SequencePanel({
                   key={bar.id}
                   draggable={!focusMode}
                   title={
-                    focusMode ? undefined : 'Drag onto another measure to swap'
+                    focusMode ? undefined : 'Drag onto another group to swap'
                   }
                   onDragStart={(event) =>
                     startMeasureDrag(event, section.id, bar.id)
@@ -776,14 +776,14 @@ export function SequencePanel({
                             </span>
                           )}
                           <p className="text-[11px] font-semibold tracking-wide text-cosmos-400 uppercase">
-                            Measure {barIndex + 1}
+                            Group {barIndex + 1}
                           </p>
                           {canPlayFromMeasure && (
                             <button
                               type="button"
                               onClick={() => playFromMeasure(bar.id)}
-                              aria-label={`Play from measure ${barIndex + 1}`}
-                              title={`Play from measure ${barIndex + 1}`}
+                              aria-label={`Play from group ${barIndex + 1}`}
+                              title={`Play from group ${barIndex + 1}`}
                               className="rounded-md px-1.5 py-0.5 text-[11px] text-cosmos-400 transition hover:bg-nebula-600/20 hover:text-white"
                             >
                               ▶
@@ -797,13 +797,13 @@ export function SequencePanel({
                             steps={steps}
                             measureId={bar.id}
                             measureIndex={barIndex}
-                            onChange={(next) => onSetMeasureSteps(bar.id, next)}
+                            onChange={(next) => onSetGroupSteps(bar.id, next)}
                           />
                           <button
                             type="button"
-                            onClick={() => onDuplicateMeasure(section.id, bar.id)}
-                            aria-label={`Copy measure ${barIndex + 1}`}
-                            title={`Copy measure ${barIndex + 1}`}
+                            onClick={() => onDuplicateGroup(section.id, bar.id)}
+                            aria-label={`Copy group ${barIndex + 1}`}
+                            title={`Copy group ${barIndex + 1}`}
                             className="ml-1 text-[11px] text-cosmos-400 transition hover:text-white"
                           >
                             ⧉
@@ -811,8 +811,8 @@ export function SequencePanel({
                           {section.bars.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => onRemoveMeasure(section.id, bar.id)}
-                              aria-label={`Remove measure ${barIndex + 1}`}
+                              onClick={() => onRemoveGroup(section.id, bar.id)}
+                              aria-label={`Remove group ${barIndex + 1}`}
                               className="text-[11px] text-cosmos-500 transition hover:text-red-400"
                             >
                               ✕
@@ -946,7 +946,7 @@ export function SequencePanel({
               {!focusMode && (
                 <button
                   type="button"
-                  onClick={() => onAddMeasure(section.id)}
+                  onClick={() => onAddGroup(section.id)}
                   onDragEnter={allowMeasureDrop}
                   onDragOver={(event) => {
                     allowMeasureDrop(event)
@@ -970,7 +970,7 @@ export function SequencePanel({
                     event.stopPropagation()
                     dropMeasureOn({ sectionId: section.id, beforeBarId: null })
                   }}
-                  aria-label={`Add measure ${section.bars.length + 1}`}
+                  aria-label={`Add group ${section.bars.length + 1}`}
                   className={`flex min-h-[240px] min-w-0 flex-col items-center justify-center rounded-xl border border-dashed bg-cosmos-900/30 text-cosmos-400 transition ${
                     dropMeasureTarget?.sectionId === section.id &&
                     dropMeasureTarget.beforeBarId === null
@@ -979,9 +979,9 @@ export function SequencePanel({
                   }`}
                 >
                   <span className="text-[11px] font-semibold tracking-wide uppercase">
-                    Measure {section.bars.length + 1}
+                    Group {section.bars.length + 1}
                   </span>
-                  <span className="mt-2 text-sm">+ Add measure</span>
+                  <span className="mt-2 text-sm">+ Add group</span>
                 </button>
               )}
             </div>
@@ -1003,7 +1003,7 @@ export function SequencePanel({
           <p className="text-center text-xs text-cosmos-400">
             {focusMode
               ? 'This sequence has no chords yet.'
-              : `Add a voicing to the highlighted step, or the next empty one. Each measure can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
+              : `Add a voicing to the highlighted step, or the next empty one. Each group can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
           </p>
         )}
       </div>
@@ -1102,6 +1102,7 @@ function SlotCell({
         })
       : null
   const chordName = slot ? displayChordSymbol(slot.chordSymbol) : ''
+  const chordParts = slot ? splitChordDisplay(slot.chordSymbol) : null
 
   return (
     <div
@@ -1207,8 +1208,8 @@ function SlotCell({
           </div>
           {presenting ? (
             <div className="mt-2 text-center">
-              <p className="truncate text-xl leading-tight font-bold text-white">
-                {chordName}
+              <p className="text-xl leading-tight font-bold text-white [overflow-wrap:anywhere]">
+                <ChordNameText parts={chordParts} fallback={chordName} />
               </p>
               <p className="mt-0.5 truncate text-sm text-nebula-400">
                 {slot.groupId} · {shortInversion(slot.inversion)}
@@ -1224,8 +1225,8 @@ function SlotCell({
             <>
               <div className="mt-2 flex items-start justify-between gap-2">
                 <div className="pointer-events-none min-w-0">
-                  <p className="truncate text-base leading-tight font-bold text-white">
-                    {chordName}
+                  <p className="text-sm leading-tight font-bold text-white [overflow-wrap:anywhere]">
+                    <ChordNameText parts={chordParts} fallback={chordName} />
                   </p>
                   <p className="mt-0.5 truncate text-xs text-nebula-300">
                     {slot.groupId} · {shortInversion(slot.inversion)}
@@ -1448,9 +1449,9 @@ function SlotFeelControls({
 
 function sectionMeta(song: Song): string {
   const sections = song.sections.length
-  const measures = song.sections.reduce((n, section) => n + section.bars.length, 0)
-  return `${sections} section${sections === 1 ? '' : 's'} · ${measures} measure${
-    measures === 1 ? '' : 's'
+  const groups = song.sections.reduce((n, section) => n + section.bars.length, 0)
+  return `${sections} section${sections === 1 ? '' : 's'} · ${groups} group${
+    groups === 1 ? '' : 's'
   }`
 }
 
@@ -1517,13 +1518,13 @@ function MeasureStepsControl({
     <div className="flex items-center gap-1">
       <label
         className="text-[10px] font-semibold tracking-[0.12em] text-cosmos-500 uppercase"
-        htmlFor={`measure-steps-${measureId}`}
+        htmlFor={`group-steps-${measureId}`}
       >
         Chords
       </label>
       <button
         type="button"
-        aria-label={`Fewer chords in measure ${measureIndex + 1}`}
+        aria-label={`Fewer chords in group ${measureIndex + 1}`}
         disabled={steps <= MIN_STEPS_PER_MEASURE}
         onClick={() => onChange(steps - 1)}
         className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
@@ -1532,7 +1533,7 @@ function MeasureStepsControl({
       </button>
       <input
         key={steps}
-        id={`measure-steps-${measureId}`}
+        id={`group-steps-${measureId}`}
         type="number"
         min={MIN_STEPS_PER_MEASURE}
         max={MAX_STEPS_PER_MEASURE}
@@ -1541,12 +1542,12 @@ function MeasureStepsControl({
         onKeyDown={(event) => {
           if (event.key === 'Enter') event.currentTarget.blur()
         }}
-        aria-label={`Chords in measure ${measureIndex + 1}`}
+        aria-label={`Chords in group ${measureIndex + 1}`}
         className="w-12 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 py-0.5 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
       />
       <button
         type="button"
-        aria-label={`More chords in measure ${measureIndex + 1}`}
+        aria-label={`More chords in group ${measureIndex + 1}`}
         disabled={steps >= MAX_STEPS_PER_MEASURE}
         onClick={() => onChange(steps + 1)}
         className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
@@ -1573,6 +1574,32 @@ function diagramAreaMinHeight(_steps: number): string {
 
 function diagramSizeForSteps(_steps: number): DiagramSize {
   return 'md'
+}
+
+function splitChordDisplay(input: string): { root: string; suffix: string } {
+  const { chord } = tryParseChord(input)
+  if (!chord) return { root: displayChordSymbol(input), suffix: '' }
+  return {
+    root: chord.symbol.slice(0, chord.rootName.length),
+    suffix: chord.symbol.slice(chord.rootName.length),
+  }
+}
+
+function ChordNameText({
+  parts,
+  fallback,
+}: {
+  parts: { root: string; suffix: string } | null
+  fallback: string
+}) {
+  if (!parts?.suffix) return fallback
+  return (
+    <>
+      {parts.root}
+      <wbr />
+      {parts.suffix}
+    </>
+  )
 }
 
 function shortInversion(inversion: number): string {

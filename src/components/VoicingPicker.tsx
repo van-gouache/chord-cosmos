@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { ChordDiagram } from './ChordDiagram'
+import { VLadder } from './VLadder'
 import { OctaveShiftButtons } from './OctaveShiftButtons'
 import { beginVoicingDrag } from './voicingDrag'
 import { playArpeggio, playNotes } from '../audio/player'
@@ -189,22 +190,29 @@ export function VoicingPicker({
         </div>
       </div>
 
-      {/* Voice layout for the chosen inversion */}
       {active && (
-        <p className="mb-3 text-xs text-cosmos-400">
-          Voices bass to soprano:{' '}
-          {active.shape.voiceTones.map((tone, i) => (
-            <span key={i}>
-              {i > 0 && <span className="text-cosmos-600"> · </span>}
-              <span className="text-cosmos-300">{tone.name}</span>
-              <span className="text-nebula-400"> {tone.degree}</span>
+        <div className="mb-3">
+          <VLadder
+            groupId={group.id}
+            gaps={group.gaps}
+            tones={active.shape.voiceTones}
+            inversion={inversion}
+          />
+          <p className="mt-2 text-xs text-cosmos-400">
+            Voices bass to soprano:{' '}
+            {active.shape.voiceTones.map((tone, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-cosmos-600"> · </span>}
+                <span className="text-cosmos-300">{tone.name}</span>
+                <span className="text-nebula-400"> {tone.degree}</span>
+              </span>
+            ))}
+            <span className="text-cosmos-400">
+              {' '}
+              · spans {active.shape.span} semitones
             </span>
-          ))}
-          <span className="text-cosmos-400">
-            {' '}
-            · spans {active.shape.span} semitones
-          </span>
-        </p>
+          </p>
+        </div>
       )}
 
       {/* Step 4: pick the position on the neck */}
