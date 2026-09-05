@@ -120,10 +120,6 @@ export function SequencePanel({
   onSetPlayback,
   onSetStrumPattern,
   onClear,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
   focusMode,
   onToggleFocus,
 }: Props) {
