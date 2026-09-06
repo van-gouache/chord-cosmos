@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { diagramFretWindow, fretWindow } from './fretWindow'
+import { emptyLineFingering } from '../theory/lineOutline'
 import { parseChord } from '../theory/chords'
 import { findFingerings, shiftFingering } from '../theory/fretboard'
 import { buildShape, V_GROUPS } from '../theory/vsystem'
@@ -96,5 +97,27 @@ describe('chord diagram fret window', () => {
     expect(towardBody.startFret).toBe(base.startFret)
     expect(towardBody.fretRows).toBe(base.fretRows + 2)
     expect(towardBody.canExtendHigh).toBe(true)
+  })
+
+  it('crops a line diagram to the frets that are actually used', () => {
+    const window = diagramFretWindow(emptyLineFingering(), {
+      highlightedFrets: [7, 8, 10],
+      tightHighlights: true,
+      minRows: 1,
+    })
+    expect(window.startFret).toBe(7)
+    expect(window.fretRows).toBe(4)
+    expect(window.showNut).toBe(false)
+  })
+
+  it('keeps the nut when a line uses an open string', () => {
+    const window = diagramFretWindow(emptyLineFingering(), {
+      highlightedFrets: [0, 3],
+      tightHighlights: true,
+      minRows: 1,
+    })
+    expect(window.startFret).toBe(1)
+    expect(window.fretRows).toBe(3)
+    expect(window.showNut).toBe(true)
   })
 })

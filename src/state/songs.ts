@@ -15,6 +15,17 @@ import {
   rootFromCustomSymbol,
   shiftCustomFingering,
 } from '../theory/customVoicing'
+import { readLineAudio, type LineAudio } from '../audio/lineAudio'
+import {
+  EMPTY_LINE_TAB,
+  LINE_GROUP_ID,
+  emptyLineFingering,
+  isLineGroupId,
+  lineShape,
+  lineSlotLabel,
+  readLineNotes,
+  toggleLineNote,
+} from '../theory/lineOutline'
 import {
   fingeringFromTab,
   MAX_PLAYABLE_FRET,
@@ -75,10 +86,14 @@ export interface SequenceSlot {
   strumPattern?: string
   /** Extra outline markers on empty string/fret cells of the diagram. */
   highlightedNotes?: HighlightedNote[]
+  /** Ordered frets of a single-note line (`groupId` is Line). */
+  lineNotes?: HighlightedNote[]
   /** Extra fret rows toward the nut, beyond the automatic box. */
   extendLow?: number
   /** Extra fret rows toward the body, beyond the automatic box. */
   extendHigh?: number
+  /** Recorded microphone take for a Line box. */
+  lineAudio?: LineAudio
 }
 
 export interface HighlightedNote {
@@ -257,6 +272,22 @@ export function slotFromVoicing(voicing: Voicing, note = ''): SequenceSlot {
   }
 }
 
+export function slotFromLineNotes(
+  notes: HighlightedNote[]
+): SequenceSlot | null {
+  const lineNotes = readLineNotes(notes)
+  if (!lineNotes) return null
+  return {
+    id: newId(),
+    chordSymbol: lineSlotLabel(),
+    groupId: LINE_GROUP_ID,
+    inversion: 0,
+    tab: EMPTY_LINE_TAB,
+    note: '',
+    lineNotes,
+  }
+}
+
 export const VOICING_DRAG_MIME = 'application/x-chord-voicing'
 
 /** Compact payload so a workshop shape can be dropped onto the sequence. */
@@ -269,12 +300,25 @@ export function voicingPayload(voicing: Voicing): string {
   })
 }
 
+export function linePayload(slot: SequenceSlot): string {
+  return JSON.stringify({
+    chordSymbol: slot.chordSymbol,
+    groupId: slot.groupId,
+    inversion: slot.inversion,
+    tab: slot.tab,
+    lineNotes: slot.lineNotes,
+    lineAudio: slot.lineAudio,
+  })
+}
+
 export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
   try {
     const value = JSON.parse(raw) as Partial<SequenceSlot>
     if (typeof value.chordSymbol !== 'string' || typeof value.tab !== 'string') {
       return null
     }
+    const lineNotes = readLineNotes(value.lineNotes)
+    const lineAudio = readLineAudio(value.lineAudio)
     return {
       id: newId(),
       chordSymbol: value.chordSymbol,
@@ -282,6 +326,9 @@ export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
       inversion: typeof value.inversion === 'number' ? value.inversion : 0,
       tab: value.tab,
       note: '',
+      playback: isPlayback(value.playback) ? value.playback : undefined,
+      lineNotes,
+      lineAudio,
     }
   } catch {
     return null
@@ -293,6 +340,8 @@ export function cloneSlot(slot: SequenceSlot): SequenceSlot {
     ...slot,
     id: newId(),
     highlightedNotes: slot.highlightedNotes?.map((note) => ({ ...note })),
+    lineNotes: slot.lineNotes?.map((note) => ({ ...note })),
+    lineAudio: slot.lineAudio ? { ...slot.lineAudio } : undefined,
   }
 }
 
@@ -380,6 +429,10 @@ export function hydrateSlot(slot: SequenceSlot): {
   shape: VoicingShape | null
   fingering: Fingering | null
 } {
+  if (isLineGroupId(slot.groupId)) {
+    return { shape: lineShape(), fingering: emptyLineFingering() }
+  }
+
   if (isCustomGroupId(slot.groupId)) {
     const fingering = fingeringFromCustomTab(slot.tab)
     if (!fingering) return { shape: null, fingering: null }
@@ -425,6 +478,13 @@ export function shiftSlotOctave(
   const bar = section?.bars.find((item) => item.id === location.barId)
   const slot = bar?.slots[location.slotIndex]
   if (!slot) return song
+  if (isLineGroupId(slot.groupId)) {
+    const shifted = shiftHighlightedNotes(slot.lineNotes, deltaFrets)
+    if (!shifted || shifted.length !== (slot.lineNotes?.length ?? 0)) {
+      return song
+    }
+    return patchSlot(song, location, { lineNotes: shifted })
+  }
   const { fingering } = hydrateSlot(slot)
   if (!fingering) return song
   const next = isCustomGroupId(slot.groupId)
@@ -611,6 +671,12 @@ export function patchSlot(
   if ('highlightedNotes' in patch && patch.highlightedNotes === undefined) {
     delete next.highlightedNotes
   }
+  if ('lineNotes' in patch && patch.lineNotes === undefined) {
+    delete next.lineNotes
+  }
+  if ('lineAudio' in patch && patch.lineAudio === undefined) {
+    delete next.lineAudio
+  }
   if ('extendLow' in patch && patch.extendLow === undefined) delete next.extendLow
   if ('extendHigh' in patch && patch.extendHigh === undefined) {
     delete next.extendHigh
@@ -660,9 +726,22 @@ export function toggleSlotHighlight(
   const bar = section?.bars.find((item) => item.id === location.barId)
   const slot = bar?.slots[location.slotIndex]
   if (!slot) return song
+  if (isLineGroupId(slot.groupId)) {
+    return patchSlot(song, location, {
+      lineNotes: toggleLineNote(slot.lineNotes, note),
+    })
+  }
   return patchSlot(song, location, {
     highlightedNotes: toggleHighlightedNote(slot.highlightedNotes, note),
   })
+}
+
+export function slotMidiNotes(
+  slot: SequenceSlot,
+  fingering: Fingering | null
+): number[] | null {
+  if (isLineGroupId(slot.groupId)) return null
+  return fingering?.midiNotes ?? null
 }
 
 export function locationsEqual(a: SlotLocation, b: SlotLocation): boolean {
@@ -685,6 +764,7 @@ export function filledChordTimeline(
     []
   for (const event of playTimeline(song)) {
     if (!event.slot || !event.location) continue
+    if (isLineGroupId(event.slot.groupId)) continue
     const { chord } = tryParseChord(event.slot.chordSymbol)
     if (chord) filled.push({ location: event.location, chord, slot: event.slot })
   }
@@ -839,6 +919,8 @@ function readSlot(value: unknown): SequenceSlot | null {
     playback: isPlayback(s.playback) ? s.playback : undefined,
     strumPattern: normalizeStrumPattern(s.strumPattern),
     highlightedNotes: readHighlightedNotes(s.highlightedNotes),
+    lineNotes: readLineNotes(s.lineNotes),
+    lineAudio: readLineAudio(s.lineAudio),
     extendLow: readExtraCount(s.extendLow),
     extendHigh: readExtraCount(s.extendHigh),
   }
@@ -1063,6 +1145,24 @@ export function saveState(state: StoredState): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
     // Storage full or blocked; the session still works in memory.
+  }
+}
+
+/** JSON download of a sequence: chords and line outlines, not microphone takes. */
+export function songForJsonExport(song: Song): Song {
+  return {
+    ...song,
+    sections: song.sections.map((section) => ({
+      ...section,
+      bars: section.bars.map((bar) => ({
+        ...bar,
+        slots: bar.slots.map((slot) => {
+          if (!slot?.lineAudio) return slot
+          const { lineAudio: _dropped, ...rest } = slot
+          return rest
+        }),
+      })),
+    })),
   }
 }
 

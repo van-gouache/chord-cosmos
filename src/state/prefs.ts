@@ -1,13 +1,23 @@
+import {
+  DEFAULT_NOTEBOOK_STYLE,
+  notebookStyleFromUnknown,
+  type NotebookStyle,
+} from './notebook'
+
 export const PREFS_KEY = 'chord-cosmos.prefs.v1'
 
 export interface AppPrefs {
   showForwardTargets: boolean
   showLickOutline: boolean
+  notebookStyle: NotebookStyle
+  audioInputId: string
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
   showForwardTargets: true,
   showLickOutline: false,
+  notebookStyle: DEFAULT_NOTEBOOK_STYLE,
+  audioInputId: '',
 }
 
 function readJson(key: string): unknown {
@@ -31,6 +41,8 @@ export function loadPrefs(): AppPrefs {
       typeof raw?.showLickOutline === 'boolean'
         ? raw.showLickOutline
         : DEFAULT_PREFS.showLickOutline,
+    notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
+    audioInputId: typeof raw?.audioInputId === 'string' ? raw.audioInputId : '',
   }
 }
 

@@ -1,0 +1,676 @@
+{
+  "id": "mtouxnq3-q29qei",
+  "name": "Autumn Leafs पत्ता",
+  "bpm": 111,
+  "playback": "strum",
+  "sections": [
+    {
+      "id": "mtouxnq3-k8cyj1",
+      "name": "A1",
+      "note": "",
+      "bars": [
+        {
+          "id": "mtouxnq3-av99an",
+          "slots": [
+            {
+              "id": "mtouytgf-yn4asf",
+              "chordSymbol": "A-7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-7-9-8-8",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 3,
+                  "fret": 8
+                }
+              ]
+            },
+            {
+              "id": "mtoxb9b9-gnocb0",
+              "chordSymbol": "A-7",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-x-5-5-5-5",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtovbtci-f615o2",
+          "slots": [
+            {
+              "id": "mtovn3kz-vht9oe",
+              "chordSymbol": "D9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "10-9-10-9-x-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtovnk72-m4rzfl",
+          "slots": [
+            {
+              "id": "mtovpm80-2ur0wt",
+              "chordSymbol": "GΔ7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-5-7-7-7",
+              "note": ""
+            },
+            {
+              "id": "mtovnynq-hyypoh",
+              "chordSymbol": "GΔ7",
+              "groupId": "V-1",
+              "inversion": 0,
+              "tab": "x-x-5-4-3-2",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtovrtya-lx0tpn",
+          "slots": [
+            {
+              "id": "mtq5hfsl-hgwlu0",
+              "chordSymbol": "G♭ D G",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-9-0-0-8-x",
+              "note": ""
+            },
+            {
+              "id": "mtovze5m-jpeav0",
+              "chordSymbol": "CΔ9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "8-7-9-7-x-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 3,
+                  "fret": 9
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtow0muc-0msa66",
+          "slots": [
+            {
+              "id": "mtow0w1h-xaak7c",
+              "chordSymbol": "F♯ø7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-9-10-9-10-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 2,
+                  "fret": 9
+                }
+              ]
+            },
+            {
+              "id": "mtow1643-6r0bos",
+              "chordSymbol": "F♯ø7",
+              "groupId": "V-2",
+              "inversion": 1,
+              "tab": "x-x-7-9-7-8",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtow3fqp-dx5k57",
+          "slots": [
+            {
+              "id": "mtow7b6w-ktiz2b",
+              "chordSymbol": "B11",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-2-2-2-4-x",
+              "note": "",
+              "playback": "strum",
+              "highlightedNotes": [
+                {
+                  "string": 4,
+                  "fret": 1
+                },
+                {
+                  "string": 4,
+                  "fret": 5
+                }
+              ],
+              "extendLow": 1
+            }
+          ]
+        },
+        {
+          "id": "mtowdsdc-463wr0",
+          "slots": [
+            {
+              "id": "mtowdu51-zi8ufx",
+              "chordSymbol": "E-9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-7-5-7-7-x",
+              "note": ""
+            },
+            {
+              "id": "mtowha88-qoenyg",
+              "chordSymbol": "E-6",
+              "groupId": "V-5",
+              "inversion": 1,
+              "tab": "x-10-11-x-12-12",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 14
+                }
+              ],
+              "extendHigh": 1
+            }
+          ]
+        },
+        {
+          "id": "mtq6allq-ztmpfh",
+          "slots": [
+            {
+              "id": "mtq6o53q-g7j5fa",
+              "chordSymbol": "E line",
+              "groupId": "Line",
+              "inversion": 0,
+              "tab": "x-x-x-x-x-x",
+              "note": "",
+              "playback": "arp-up",
+              "lineNotes": [
+                {
+                  "string": 3,
+                  "fret": 11
+                },
+                {
+                  "string": 4,
+                  "fret": 12
+                },
+                {
+                  "string": 4,
+                  "fret": 13
+                },
+                {
+                  "string": 4,
+                  "fret": 15
+                },
+                {
+                  "string": 5,
+                  "fret": 12
+                },
+                {
+                  "string": 5,
+                  "fret": 14
+                },
+                {
+                  "string": 5,
+                  "fret": 15
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mtoxcino-g8big9",
+      "name": "A2",
+      "note": "",
+      "bars": [
+        {
+          "id": "mtoxcino-amugaa",
+          "slots": [
+            {
+              "id": "mtoxex6v-gvzd5u",
+              "chordSymbol": "Asus2",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-x-7-9-0-12",
+              "note": "",
+              "strumPattern": "dudu",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 8
+                },
+                {
+                  "string": 5,
+                  "fret": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtoxiyuy-tuvb5z",
+          "slots": [
+            {
+              "id": "mtq5d9mj-zzjylj",
+              "chordSymbol": "D7sus4",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-5-x-5-8-5",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtoxjyjn-ivrz4o",
+          "slots": [
+            {
+              "id": "mtoxk3x9-l7wc7h",
+              "chordSymbol": "GΔ7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-5-7-7-7",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 8
+                },
+                {
+                  "string": 5,
+                  "fret": 10
+                }
+              ],
+              "extendHigh": 2
+            },
+            {
+              "id": "mtoxnf5h-eac3g9",
+              "chordSymbol": "Gadd9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-5-7-0-5",
+              "note": "omit5 [pinch]"
+            }
+          ]
+        },
+        {
+          "id": "mtoxq5zp-zrbmf8",
+          "slots": [
+            {
+              "id": "mtoxrwum-lby2kr",
+              "chordSymbol": "CΔ7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-3-5-4-5-x",
+              "note": ""
+            },
+            {
+              "id": "mtoxqzpz-v3hwuy",
+              "chordSymbol": "CΔ7",
+              "groupId": "V-3",
+              "inversion": 1,
+              "tab": "x-7-5-5-x-7",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 4,
+                  "fret": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtoxvrf2-8tfsd4",
+          "slots": [
+            {
+              "id": "mtoxvwj4-w9f228",
+              "chordSymbol": "F♯ø7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-9-10-9-10-x",
+              "note": "",
+              "strumPattern": "dudu",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 8
+                },
+                {
+                  "string": 5,
+                  "fret": 12
+                }
+              ],
+              "extendLow": 1
+            }
+          ]
+        },
+        {
+          "id": "mtoxz14o-xiec6p",
+          "slots": [
+            {
+              "id": "mtoxz46c-433iwf",
+              "chordSymbol": "B11",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-2-2-2-4-x",
+              "note": "",
+              "playback": "strum",
+              "highlightedNotes": [
+                {
+                  "string": 4,
+                  "fret": 1
+                },
+                {
+                  "string": 4,
+                  "fret": 5
+                }
+              ],
+              "extendLow": 1
+            },
+            {
+              "id": "mtoxzyhr-5rvxje",
+              "chordSymbol": "C D♯ F♯",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-x-x-5-4-2",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtoy0eq7-bsl73k",
+          "slots": [
+            {
+              "id": "mtoy0jui-hywynh",
+              "chordSymbol": "E-9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-7-5-7-7-x",
+              "note": ""
+            },
+            {
+              "id": "mtoy109q-v8nby1",
+              "chordSymbol": "E-",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-x-14-12-12-12",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mtoyhiqc-3t2znk",
+      "name": "B1",
+      "note": "",
+      "bars": [
+        {
+          "id": "mtoyhiqc-z41t38",
+          "slots": [
+            {
+              "id": "mtoyk02x-i3bdmr",
+              "chordSymbol": "F♯ø7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-4-5-5-5",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mtoylqo7-kluw7z",
+          "slots": [
+            {
+              "id": "mtoylrv4-0vook4",
+              "chordSymbol": "B7♭13",
+              "groupId": "V-4",
+              "inversion": 0,
+              "tab": "7-x-7-8-8-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 10
+                }
+              ]
+            },
+            {
+              "id": "mtoymc28-c1sa5f",
+              "chordSymbol": "B7♭13",
+              "groupId": "V-4",
+              "inversion": 3,
+              "tab": "x-0-5-4-4-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 5
+                },
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ],
+              "extendHigh": 2
+            }
+          ]
+        },
+        {
+          "id": "mtoyoxsp-76lbtw",
+          "slots": [
+            {
+              "id": "mtoyp3hg-8st4e4",
+              "chordSymbol": "E-9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-7-5-7-7-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 4,
+                  "fret": 8
+                }
+              ]
+            },
+            {
+              "id": "mtoyqzco-tzkb56",
+              "chordSymbol": "E-6",
+              "groupId": "V-4",
+              "inversion": 3,
+              "tab": "x-4-x-4-5-3",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 5
+                },
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ],
+              "extendHigh": 1
+            }
+          ]
+        },
+        {
+          "id": "mtoyrcqt-2r7vbp",
+          "slots": [
+            {
+              "id": "mtp6zgeg-xnkfa1",
+              "chordSymbol": "E-6/9",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-14-12-14-14",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtp5jbr2-l9kw8l",
+          "slots": [
+            {
+              "id": "mtp5mher-nwh63k",
+              "chordSymbol": "A-7",
+              "groupId": "V-4",
+              "inversion": 0,
+              "tab": "5-x-5-5-5-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 1,
+                  "fret": 7
+                },
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ]
+            },
+            {
+              "id": "mtp5jtbe-1asnr7",
+              "chordSymbol": "A-7",
+              "groupId": "V-4",
+              "inversion": 1,
+              "tab": "8-x-7-9-8-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 7
+                }
+              ]
+            },
+            {
+              "id": "mtp5ytnl-kx5ouc",
+              "chordSymbol": "A[9,b3,5,b7]",
+              "groupId": "V-4",
+              "inversion": 2,
+              "tab": "12-x-10-12-12-x",
+              "note": ""
+            },
+            {
+              "id": "mtp5w6qm-c5eaeh",
+              "chordSymbol": "A-7",
+              "groupId": "V-3",
+              "inversion": 0,
+              "tab": "x-12-10-12-x-12",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtp64jdx-zrgsn4",
+          "slots": [
+            {
+              "id": "mtp71dwy-9mg9ur",
+              "chordSymbol": "D7",
+              "groupId": "V-2",
+              "inversion": 1,
+              "tab": "x-9-10-7-10-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 7
+                },
+                {
+                  "string": 5,
+                  "fret": 10
+                }
+              ]
+            },
+            {
+              "id": "mtp71k5c-taclgg",
+              "chordSymbol": "D7",
+              "groupId": "V-2",
+              "inversion": 0,
+              "tab": "x-x-12-14-13-14",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtp77rwj-qmy3ex",
+          "slots": [
+            {
+              "id": "mtp7c7mj-1ew9to",
+              "chordSymbol": "GΔ13",
+              "groupId": "V-4",
+              "inversion": 0,
+              "tab": "x-10-x-11-12-12",
+              "note": ""
+            },
+            {
+              "id": "mtp7k9jb-fsg69v",
+              "chordSymbol": "GΔ13",
+              "groupId": "Custom",
+              "inversion": 0,
+              "tab": "x-x-9-11-8-12",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "id": "mtp7lsf9-wg9p63",
+          "slots": [
+            {
+              "id": "mtp7lupl-0gysrg",
+              "chordSymbol": "CΔ7",
+              "groupId": "V-4",
+              "inversion": 2,
+              "tab": "3-x-2-4-1-x",
+              "note": "",
+              "highlightedNotes": [
+                {
+                  "string": 5,
+                  "fret": 0
+                }
+              ]
+            },
+            {
+              "id": "mtp7miul-ckz3n4",
+              "chordSymbol": "C[9,3,5,7]",
+              "groupId": "V-4",
+              "inversion": 3,
+              "tab": "7-x-5-7-5-x",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "createdAt": 1788641444955,
+  "updatedAt": 1788728737193
+}

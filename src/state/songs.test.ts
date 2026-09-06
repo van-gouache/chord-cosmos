@@ -13,6 +13,7 @@ import {
   countSlots,
   createSong,
   emptySection,
+  songForJsonExport,
   exportSong,
   firstEmptyLocation,
   nextEmptyAfter,
@@ -36,6 +37,8 @@ import {
   readImportedSongs,
   saveState,
   slotFromVoicingPayload,
+  slotFromLineNotes,
+  slotMidiNotes,
   setBarSteps,
   stepSeconds,
   type SequenceSlot,
@@ -92,6 +95,75 @@ describe('song grid helpers', () => {
     expect(slot?.groupId).toBe('V-4')
     expect(slot?.tab).toBe('x-7-9-7-8-x')
     expect(slotFromVoicingPayload('nope')).toBeNull()
+  })
+
+  it('stores a single-note line as outlined frets', () => {
+    const line = slotFromLineNotes([
+      { string: 5, fret: 7 },
+      { string: 4, fret: 8 },
+      { string: 5, fret: 10 },
+    ])
+    expect(line?.groupId).toBe('Line')
+    expect(line?.chordSymbol).toBe('Line')
+    expect(line?.playback).toBeUndefined()
+    expect(line?.lineNotes).toEqual([
+      { string: 4, fret: 8 },
+      { string: 5, fret: 7 },
+      { string: 5, fret: 10 },
+    ])
+    expect(slotMidiNotes(line!, null)).toBeNull()
+
+    const song = createSong('Line')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(song, location, line!)
+    const hydrated = hydrateSlot(placed.sections[0].bars[0].slots[0]!)
+    expect(hydrated.shape?.group.id).toBe('Line')
+    expect(hydrated.fingering?.notes).toHaveLength(0)
+
+    const dropped = slotFromVoicingPayload(
+      JSON.stringify({
+        chordSymbol: 'Line',
+        groupId: 'Line',
+        inversion: 0,
+        tab: 'x-x-x-x-x-x',
+        lineNotes: line!.lineNotes,
+      })
+    )
+    expect(dropped?.lineNotes).toEqual(line!.lineNotes)
+
+    const added = toggleSlotHighlight(placed, location, { string: 3, fret: 9 })
+    expect(added.sections[0].bars[0].slots[0]?.lineNotes).toEqual([
+      { string: 3, fret: 9 },
+      { string: 4, fret: 8 },
+      { string: 5, fret: 7 },
+      { string: 5, fret: 10 },
+    ])
+
+    const up = shiftSlotOctave(placed, location, 12)
+    expect(up.sections[0].bars[0].slots[0]?.lineNotes).toEqual([
+      { string: 4, fret: 20 },
+      { string: 5, fret: 19 },
+      { string: 5, fret: 22 },
+    ])
+
+    const withTake = patchSlot(placed, location, {
+      lineAudio: {
+        mimeType: 'audio/webm',
+        duration: 1.25,
+        data: `data:audio/webm;base64,${'A'.repeat(40)}`,
+      },
+    })
+    expect(withTake.sections[0].bars[0].slots[0]?.lineAudio?.duration).toBe(1.25)
+    const cloned = cloneSlot(withTake.sections[0].bars[0].slots[0]!)
+    expect(cloned.lineAudio?.data).toBe(
+      withTake.sections[0].bars[0].slots[0]?.lineAudio?.data
+    )
+    const cleared = patchSlot(withTake, location, { lineAudio: undefined })
+    expect(cleared.sections[0].bars[0].slots[0]?.lineAudio).toBeUndefined()
   })
 
   it('clones a song with fresh ids and the same chords', () => {
@@ -478,6 +550,24 @@ describe('song grid helpers', () => {
     expect(text).toContain('keep it sparse')
     expect(text).toContain('E-7')
     expect(text).toContain('E-7: bass on 1')
+  })
+
+  it('omits microphone takes from JSON export', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const withTake = patchSlot(song, location, {
+      lineAudio: {
+        mimeType: 'audio/webm',
+        duration: 1,
+        data: `data:audio/webm;base64,${'A'.repeat(40)}`,
+      },
+    })
+    expect(JSON.stringify(songForJsonExport(withTake))).not.toContain('lineAudio')
+    expect(withTake.sections[0].bars[0].slots[0]?.lineAudio).toBeDefined()
   })
 
   it('parses and formats strum patterns', () => {

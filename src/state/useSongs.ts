@@ -40,21 +40,23 @@ import {
   saveState,
   setBarSteps,
   slotFromVoicing,
+  slotFromLineNotes,
   type PlaybackStyle,
   type SequenceSlot,
   type SlotLocation,
   type Song,
 } from './songs'
+import { defaultStarterSongs } from './starter'
 
 /** Owns the saved songs and keeps them mirrored to localStorage. */
 export function useSongs() {
   const [songs, setSongs] = useState<Song[]>(() => {
     const stored = loadState()
-    return stored.songs.length > 0 ? stored.songs : [createSong('My sequence')]
+    return stored.songs.length > 0 ? stored.songs : defaultStarterSongs()
   })
   const [activeSongId, setActiveSongId] = useState<string | null>(() => {
     const stored = loadState()
-    return stored.activeSongId ?? null
+    return stored.activeSongId ?? stored.songs[0]?.id ?? defaultStarterSongs()[0]?.id ?? null
   })
   const [historyRev, setHistoryRev] = useState(0)
   const songsRef = useRef(songs)
@@ -70,7 +72,7 @@ export function useSongs() {
     const migrated = songsRef.current
       .map((song) => normalizeSong(song))
       .filter((song): song is Song => song !== null)
-    commitSongs(migrated.length > 0 ? migrated : [createSong('My sequence')])
+    commitSongs(migrated.length > 0 ? migrated : defaultStarterSongs())
   }, [commitSongs])
 
   useEffect(() => {
@@ -181,6 +183,38 @@ export function useSongs() {
     [activeSongId, updateSong]
   )
 
+  const addLine = useCallback(
+    (
+      notes: SequenceSlot['lineNotes'],
+      preferred?: SlotLocation | null
+    ): { location: SlotLocation; nextSelection: SlotLocation } | null => {
+      const current =
+        songsRef.current.find((song) => song.id === activeSongId) ??
+        songsRef.current[0]
+      if (!current || !notes) return null
+      const slot = slotFromLineNotes(notes)
+      if (!slot) return null
+      let placed: { location: SlotLocation; nextSelection: SlotLocation } | null =
+        null
+      updateSong(current.id, (song) => {
+        const prepared = resolveAddLocation(song, preferred)
+        const replacing = Boolean(slotAt(prepared.song, prepared.location))
+        const next = placeSlot(prepared.song, prepared.location, slot)
+        placed = {
+          location: prepared.location,
+          nextSelection: replacing
+            ? prepared.location
+            : (nextEmptyAfter(next, prepared.location) ??
+              firstEmptyLocation(next) ??
+              prepared.location),
+        }
+        return next
+      })
+      return placed
+    },
+    [activeSongId, updateSong]
+  )
+
   const placeIncoming = useCallback(
     (location: SlotLocation, slot: SequenceSlot) => {
       if (!activeSong) return
@@ -234,6 +268,19 @@ export function useSongs() {
     (location: SlotLocation, patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => patchSlot(song, location, patch))
+    },
+    [activeSong, updateSong]
+  )
+
+  const setLineAudio = useCallback(
+    (
+      location: SlotLocation,
+      lineAudio: SequenceSlot['lineAudio'] | undefined
+    ) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        patchSlot(song, location, { lineAudio })
+      )
     },
     [activeSong, updateSong]
   )
@@ -488,12 +535,14 @@ export function useSongs() {
     firstEmpty: activeSong ? firstEmptyLocation(activeSong) : null,
     setActiveSongId,
     addVoicing,
+    addLine,
     placeIncoming,
     removeSlot,
     relocateSlot,
     duplicateSlot,
     setSlotNote,
     setSlotFeel,
+    setLineAudio,
     toggleHighlight,
     extendFrets,
     shiftSlotOctave: shiftSlotOctaveBy,

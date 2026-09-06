@@ -27,12 +27,18 @@ export default function App() {
   const [showLickOutline, setShowLickOutline] = useState(
     () => loadPrefs().showLickOutline
   )
+  const [notebookMode, setNotebookMode] = useState(false)
+  const [notebookStyle, setNotebookStyle] = useState(
+    () => loadPrefs().notebookStyle
+  )
+  const [audioInputId, setAudioInputId] = useState(
+    () => loadPrefs().audioInputId
+  )
   const [qualityNonce, setQualityNonce] = useState(0)
   const [selectedVoicing, setSelectedVoicing] = useState<Voicing | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<SlotLocation | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [workshopOpen, setWorkshopOpen] = useState(true)
-  const [focusMode, setFocusMode] = useState(false)
   const [showSplash, setShowSplash] = useState(true)
   const rootRef = useRef<HTMLDivElement>(null)
   const usedBrowserFullscreen = useRef(false)
@@ -46,8 +52,8 @@ export default function App() {
     }
   }, [songs.activeSong, selectedSlot])
 
-  const toggleFocus = useCallback(() => {
-    setFocusMode((open) => {
+  const toggleNotebook = useCallback(() => {
+    setNotebookMode((open) => {
       if (!open) {
         void rootRef.current
           ?.requestFullscreen?.()
@@ -71,7 +77,7 @@ export default function App() {
     const sync = () => {
       if (!document.fullscreenElement && usedBrowserFullscreen.current) {
         usedBrowserFullscreen.current = false
-        setFocusMode(false)
+        setNotebookMode(false)
       }
     }
     document.addEventListener('fullscreenchange', sync)
@@ -160,14 +166,14 @@ export default function App() {
   return (
     <div
       ref={rootRef}
-      className="flex h-full min-h-0 flex-col bg-cosmos-950"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-cosmos-950"
       onPointerDown={unlockAudio}
     >
       <h1 className="sr-only">Chord Cosmos</h1>
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
       <div
         className={
-          focusMode
+          notebookMode
             ? 'flex min-h-0 flex-1 flex-col'
             : 'flex min-h-0 flex-1 flex-col lg:flex-row'
         }
@@ -177,8 +183,7 @@ export default function App() {
             song={songs.activeSong}
             songs={songs.songs}
             slotCount={songs.slotCount}
-            focusMode={focusMode}
-            onToggleFocus={toggleFocus}
+            notebookMode={notebookMode}
             selected={selectedSlot}
             onSelectSlot={setSelectedSlot}
             onSelectSong={(id) => {
@@ -200,6 +205,12 @@ export default function App() {
             onDuplicateSlot={songs.duplicateSlot}
             onSetSlotNote={songs.setSlotNote}
             onSetSlotFeel={songs.setSlotFeel}
+            onSetLineAudio={songs.setLineAudio}
+            audioInputId={audioInputId}
+            onAudioInputIdChange={(deviceId) => {
+              setAudioInputId(deviceId)
+              updatePrefs({ audioInputId: deviceId })
+            }}
             onToggleHighlight={songs.toggleHighlight}
             onExtendFrets={songs.extendFrets}
             onShiftSlotOctave={songs.shiftSlotOctave}
@@ -222,12 +233,18 @@ export default function App() {
             onRedo={songs.redo}
             showForwardTargets={showForwardTargets}
             showLickOutline={showLickOutline}
+            notebookStyle={notebookStyle}
+            onToggleNotebook={toggleNotebook}
+            onNotebookStyleChange={(style) => {
+              setNotebookStyle(style)
+              updatePrefs({ notebookStyle: style })
+            }}
           />
         </div>
 
-        {!focusMode &&
+        {!notebookMode &&
           (workshopOpen ? (
-            <aside className="mx-3 mb-3 flex max-h-[48vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-cosmos-700/70 bg-cosmos-900/80 lg:my-3 lg:mr-3 lg:ml-0 lg:max-h-none lg:w-[min(460px,38vw)]">
+            <aside className="mx-3 mb-3 flex max-h-[48vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-cosmos-700/70 bg-cosmos-900/80 lg:my-3 lg:mr-3 lg:ml-0 lg:max-h-full lg:w-[min(460px,38vw)]">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-cosmos-700/70 px-4 py-2.5">
                 <div>
                   <p className="text-xs font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
@@ -237,7 +254,7 @@ export default function App() {
                     {workshopTab === 'config'
                       ? 'Toggle helpers for the workshop and sequence'
                       : workshopTab === 'build'
-                      ? 'Click frets to build a shape'
+                      ? 'Build a chord shape or outline a single-note line'
                       : chord
                         ? workshopTab === 'triads'
                           ? `${triadGroups.filter((g) => !g.unreachable).length} of ${triadGroups.length} triad families for ${chord.symbol}`
@@ -314,10 +331,28 @@ export default function App() {
                       setShowLickOutline(value)
                       updatePrefs({ showLickOutline: value })
                     }}
+                    notebookStyle={notebookStyle}
+                    onNotebookStyleChange={(style) => {
+                      setNotebookStyle(style)
+                      updatePrefs({ notebookStyle: style })
+                    }}
+                    audioInputId={audioInputId}
+                    onAudioInputIdChange={(deviceId) => {
+                      setAudioInputId(deviceId)
+                      updatePrefs({ audioInputId: deviceId })
+                    }}
                   />
                 ) : workshopTab === 'build' ? (
                   <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
-                    <FretboardBuilder onAdd={handleAdd} />
+                    <FretboardBuilder
+                      onAdd={handleAdd}
+                      onAddLine={(notes) => {
+                        const placed = songs.addLine(notes, selectedSlot)
+                        if (placed) setSelectedSlot(placed.nextSelection)
+                        setJustAdded('line')
+                        window.setTimeout(() => setJustAdded(null), 1400)
+                      }}
+                    />
                   </div>
                 ) : (
                 <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
@@ -406,7 +441,7 @@ export default function App() {
       </div>
 
       {/* Confirmation that a shape landed in the sequence */}
-      {justAdded && !focusMode && (
+      {justAdded && !notebookMode && (
         <div className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-nebula-500/50 bg-cosmos-850 px-5 py-2.5 text-sm font-medium text-white shadow-xl">
           Added to {songs.activeSong?.name}
         </div>

@@ -24,16 +24,21 @@
   --color-gold-400: #e0c36a;
 
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-notebook: 'Libre Baskerville', 'Times New Roman', serif;
+  --font-hand: 'Caveat', 'Segoe Script', cursive;
 }
 
 html,
 body,
 #root {
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 html {
   color-scheme: dark;
+  overscroll-behavior: none;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-nebula-500) 55%, var(--color-cosmos-800))
     transparent;
@@ -41,6 +46,8 @@ html {
 
 body {
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
   background-color: var(--color-cosmos-950);
   color: #d8e2ee;
   font-family: var(--font-sans);
@@ -136,4 +143,273 @@ body::after {
 
 .splash-rise {
   animation: splash-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* —— Notebook page styles ——————————————————————————————— */
+
+.notebook-page {
+  --nb-ink: #1c140c;
+  --nb-muted: #6a5840;
+  --nb-rule: rgba(40, 24, 8, 0.18);
+  --nb-play: #c23b2a;
+  --nb-select: rgba(40, 24, 8, 0.08);
+  position: relative;
+  margin: 0 auto;
+  max-width: 58rem;
+  min-height: 100%;
+  padding: 1.6rem 1.5rem 2.4rem;
+  color: var(--nb-ink);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.notebook-masthead {
+  margin-bottom: 1.4rem;
+  text-align: center;
+}
+
+.notebook-kicker {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nb-muted);
+}
+
+.notebook-title {
+  margin: 0.2rem 0 0;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.notebook-section + .notebook-section {
+  margin-top: 1.5rem;
+}
+
+.notebook-rehearsal-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.45rem;
+}
+
+.notebook-rehearsal {
+  display: inline-flex;
+  min-width: 1.5rem;
+  justify-content: center;
+  border: 1.5px solid currentColor;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.notebook-section-note {
+  margin: 0;
+  flex: 1;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--nb-muted);
+}
+
+.notebook-play {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--nb-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.notebook-play:hover {
+  color: var(--nb-ink);
+}
+
+.notebook-box-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .notebook-box-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.notebook-chord {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 11.5rem;
+  padding: 0.45rem 0.35rem 0.5rem;
+  border: 1.4px solid color-mix(in srgb, var(--nb-ink) 55%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, #fff8e6 72%, transparent);
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.notebook-chord:hover,
+.notebook-chord.is-selected {
+  background: color-mix(in srgb, var(--nb-select) 80%, #fff8e6);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nb-ink) 35%, transparent);
+}
+
+.notebook-chord.is-playing .notebook-symbol {
+  box-shadow: inset 0 -2px 0 var(--nb-play);
+}
+
+.notebook-symbol {
+  width: 100%;
+  margin-bottom: 0.15rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.notebook-voicing,
+.notebook-slot-note {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  font-size: 0.62rem;
+  color: var(--nb-muted);
+}
+
+.notebook-box-diagram {
+  display: block;
+  width: 100%;
+  max-width: 7.4rem;
+  height: auto;
+  margin: 0.1rem auto 0.15rem;
+  color: #2a1c10;
+}
+
+.notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-300,
+.notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-400,
+.notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-600 {
+  color: #2a1c10;
+}
+
+.notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-700 {
+  color: #c4b089;
+}
+
+.notebook-page[data-style='cream'] {
+  --nb-ink: #1d160e;
+  --nb-muted: #6d5a3c;
+  --nb-play: #c23b2a;
+  --nb-select: rgba(40, 24, 8, 0.08);
+  background-color: #efe3c4;
+  background-image:
+    radial-gradient(ellipse 70% 40% at 8% 0%, rgba(160, 110, 40, 0.1), transparent 55%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      rgba(80, 50, 20, 0.05) 32px
+    );
+  font-family: var(--font-notebook);
+}
+
+.notebook-page[data-style='legal'] {
+  --nb-ink: #2a2418;
+  --nb-muted: #6d5a2c;
+  --nb-play: #c44a1a;
+  --nb-select: rgba(180, 80, 20, 0.1);
+  padding-left: 3.1rem;
+  background-color: #f4dc6e;
+  background-image:
+    linear-gradient(90deg, #e24b4b 0 2px, transparent 2px),
+    repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 27px,
+      rgba(70, 110, 180, 0.38) 28px
+    );
+  font-family: var(--font-hand);
+}
+
+.notebook-page[data-style='legal']::before {
+  content: '';
+  position: absolute;
+  top: 1.2rem;
+  bottom: 1.2rem;
+  left: 1.05rem;
+  width: 0.55rem;
+  background:
+    radial-gradient(circle at 50% 12%, #d8d0b8 0 0.22rem, transparent 0.24rem),
+    radial-gradient(circle at 50% 36%, #d8d0b8 0 0.22rem, transparent 0.24rem),
+    radial-gradient(circle at 50% 60%, #d8d0b8 0 0.22rem, transparent 0.24rem),
+    radial-gradient(circle at 50% 84%, #d8d0b8 0 0.22rem, transparent 0.24rem);
+}
+
+.notebook-page[data-style='legal'] .notebook-title {
+  font-size: 2.1rem;
+}
+
+.notebook-page[data-style='legal'] .notebook-rehearsal {
+  border-width: 2px;
+}
+
+.notebook-page[data-style='staff'] {
+  --nb-ink: #161616;
+  --nb-muted: #6a6a6a;
+  --nb-play: #b42318;
+  --nb-select: rgba(20, 20, 20, 0.06);
+  background-color: #f6f2ea;
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent,
+    transparent 10px,
+    rgba(20, 20, 20, 0.08) 11px
+  );
+  font-family: var(--font-notebook);
+}
+
+.notebook-page[data-style='night'] {
+  --nb-ink: #e4ecf4;
+  --nb-muted: #7d93ad;
+  --nb-play: #4ec8e8;
+  --nb-select: rgba(79, 108, 255, 0.16);
+  background-color: #0b1522;
+  background-image:
+    radial-gradient(ellipse 70% 40% at 80% 0%, rgba(79, 108, 255, 0.12), transparent 50%),
+    repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 27px,
+      rgba(90, 113, 140, 0.12) 28px
+    );
+  font-family: var(--font-sans);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(173, 192, 212, 0.12);
+}
+
+.notebook-page[data-style='night'] .notebook-chord {
+  background: color-mix(in srgb, #102033 78%, transparent);
+}
+
+.notebook-page[data-style='night'] .notebook-box-diagram {
+  color: #e4ecf4;
+}
+
+.notebook-page[data-style='night'] .notebook-box-diagram .text-cosmos-300,
+.notebook-page[data-style='night'] .notebook-box-diagram .text-cosmos-400,
+.notebook-page[data-style='night'] .notebook-box-diagram .text-cosmos-600 {
+  color: #e4ecf4;
+}
+
+.notebook-page[data-style='night'] .notebook-box-diagram .text-cosmos-700 {
+  color: #2c4260;
 }

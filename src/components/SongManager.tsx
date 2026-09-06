@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import {
   countSlots,
   exportSong,
+  songForJsonExport,
   songSummary,
   type Song,
 } from '../state/songs'
@@ -87,7 +88,7 @@ export function SongManager({
   }
 
   const downloadJson = (song: Song) => {
-    const blob = new Blob([JSON.stringify(song, null, 2)], {
+    const blob = new Blob([JSON.stringify(songForJsonExport(song), null, 2)], {
       type: 'application/json',
     })
     const url = URL.createObjectURL(blob)

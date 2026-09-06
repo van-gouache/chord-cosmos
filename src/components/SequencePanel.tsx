@@ -4,10 +4,17 @@ import {
   useMemo,
   useRef,
   useState,
-  type Ref,
 } from 'react'
 
 import { playArrangement, playBeat, stopAll } from '../audio/player'
+import {
+  MAX_LINE_RECORD_SECONDS,
+  playLineAudio,
+  startLineRecording,
+  stopLineAudio,
+  type LineRecorder,
+} from '../audio/lineAudio'
+import { AudioInputSelect } from './AudioInputSelect'
 import {
   cellPc,
   nearestEmptyCell,
@@ -32,6 +39,7 @@ import {
   locationsEqual,
   nextFilledChordMap,
   playTimeline,
+  slotMidiNotes,
   slotPlayback,
   slotStrumPattern,
   type PlaybackStyle,
@@ -44,9 +52,12 @@ import { OctaveSelect } from './OctaveShiftButtons'
 import type { Fingering } from '../theory/fretboard'
 import type { VoicingShape } from '../theory/vsystem'
 import { inversionOrdinal } from '../theory/voicings'
+import { isLineGroupId } from '../theory/lineOutline'
 import { ChordDiagram, type DiagramSize } from './ChordDiagram'
 import { diagramFretWindow } from './fretWindow'
 import { SongManager } from './SongManager'
+import { NotebookStyleSwitch, NotebookView } from './NotebookView'
+import type { NotebookStyle } from '../state/notebook'
 
 const DRAG_MIME = 'application/x-chord-slot'
 const MEASURE_DRAG_MIME = 'application/x-chord-measure'
@@ -76,6 +87,12 @@ interface Props {
     location: SlotLocation,
     patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>
   ) => void
+  onSetLineAudio: (
+    location: SlotLocation,
+    audio: SequenceSlot['lineAudio'] | undefined
+  ) => void
+  audioInputId: string
+  onAudioInputIdChange: (deviceId: string) => void
   onToggleHighlight: (
     location: SlotLocation,
     note: { string: number; fret: number }
@@ -108,10 +125,12 @@ interface Props {
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
-  focusMode: boolean
-  onToggleFocus: () => void
   showForwardTargets?: boolean
   showLickOutline?: boolean
+  notebookMode?: boolean
+  notebookStyle?: NotebookStyle
+  onToggleNotebook?: () => void
+  onNotebookStyleChange?: (style: NotebookStyle) => void
 }
 
 export function SequencePanel({
@@ -130,6 +149,9 @@ export function SequencePanel({
   onDuplicateSlot,
   onSetSlotNote,
   onSetSlotFeel,
+  onSetLineAudio,
+  audioInputId,
+  onAudioInputIdChange,
   onToggleHighlight,
   onExtendFrets,
   onShiftSlotOctave,
@@ -148,10 +170,16 @@ export function SequencePanel({
   onClear,
   selected,
   onSelectSlot,
-  focusMode,
-  onToggleFocus,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   showForwardTargets = true,
   showLickOutline = false,
+  notebookMode = false,
+  notebookStyle = 'cream',
+  onToggleNotebook,
+  onNotebookStyleChange,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
@@ -168,9 +196,17 @@ export function SequencePanel({
   const [copied, setCopied] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
   const [playbackOpen, setPlaybackOpen] = useState(false)
+  const [recordingAt, setRecordingAt] = useState<SlotLocation | null>(null)
+  const [recordError, setRecordError] = useState<string | null>(null)
+  const recorderRef = useRef<LineRecorder | null>(null)
+  const recordingAtRef = useRef<SlotLocation | null>(null)
+  const recordTimerRef = useRef<number | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const playingCellRef = useRef<HTMLDivElement>(null)
+  const playingCellRef = useRef<HTMLElement | null>(null)
+  const bindPlayingCell = (el: HTMLElement | null) => {
+    playingCellRef.current = el
+  }
 
   const timeline = useMemo(() => (song ? playTimeline(song) : []), [song])
   const nextByLocation = useMemo(
@@ -193,7 +229,8 @@ export function SequencePanel({
   const midiByIndex = useMemo(() => {
     return timeline.map((event) => {
       if (!event.slot) return null
-      return hydratedById.get(event.slot.id)?.fingering?.midiNotes ?? null
+      const fingering = hydratedById.get(event.slot.id)?.fingering ?? null
+      return slotMidiNotes(event.slot, fingering)
     })
   }, [hydratedById, timeline])
 
@@ -204,15 +241,32 @@ export function SequencePanel({
   }, [])
 
   useEffect(() => {
-    if (!focusMode || managerOpen) return
+    if (!notebookMode || managerOpen) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || document.fullscreenElement) return
       event.preventDefault()
-      onToggleFocus()
+      onToggleNotebook?.()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [focusMode, managerOpen, onToggleFocus])
+  }, [notebookMode, managerOpen, onToggleNotebook])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      const action = undoRedoAction(event)
+      if (!action) return
+      if (action === 'undo' && canUndo) {
+        event.preventDefault()
+        onUndo()
+      } else if (action === 'redo' && canRedo) {
+        event.preventDefault()
+        onRedo()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [canRedo, canUndo, onRedo, onUndo])
 
   const stop = useCallback(() => {
     stopRef.current?.()
@@ -220,6 +274,64 @@ export function SequencePanel({
     setIsPlaying(false)
     setPlayingIndex(null)
     stopAll()
+    stopLineAudio()
+  }, [])
+
+  const finishRecording = useCallback(
+    async (save: boolean) => {
+      const recorder = recorderRef.current
+      const location = recordingAtRef.current
+      recorderRef.current = null
+      recordingAtRef.current = null
+      if (recordTimerRef.current !== null) {
+        window.clearTimeout(recordTimerRef.current)
+        recordTimerRef.current = null
+      }
+      setRecordingAt(null)
+      if (!recorder) return
+      if (!save) {
+        recorder.cancel()
+        return
+      }
+      try {
+        const clip = await recorder.stop()
+        if (location) onSetLineAudio(location, clip)
+      } catch (error) {
+        setRecordError(
+          error instanceof Error ? error.message : 'Could not save that take.'
+        )
+      }
+    },
+    [onSetLineAudio]
+  )
+
+  const startRecording = useCallback(
+    async (location: SlotLocation) => {
+      stop()
+      await finishRecording(false)
+      setRecordError(null)
+      try {
+        const recorder = await startLineRecording(audioInputId || undefined)
+        recorderRef.current = recorder
+        recordingAtRef.current = location
+        setRecordingAt(location)
+        recordTimerRef.current = window.setTimeout(() => {
+          void finishRecording(true)
+        }, MAX_LINE_RECORD_SECONDS * 1000)
+      } catch {
+        setRecordError('Could not start the microphone. Check Config → Audio input.')
+      }
+    },
+    [audioInputId, finishRecording, stop]
+  )
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.cancel()
+      if (recordTimerRef.current !== null) {
+        window.clearTimeout(recordTimerRef.current)
+      }
+    }
   }, [])
 
   const playFrom = useCallback(
@@ -239,7 +351,11 @@ export function SequencePanel({
           strumPattern: slotStrumPattern(event.slot, song.strumPattern),
         })),
         {
-          onBeat: (index) => setPlayingIndex(startIndex + index),
+          onBeat: (index) => {
+            setPlayingIndex(startIndex + index)
+            const clip = remaining[index]?.slot?.lineAudio
+            if (clip) playLineAudio(clip)
+          },
           onDone: () => {
             setIsPlaying(false)
             setPlayingIndex(null)
@@ -314,7 +430,7 @@ export function SequencePanel({
     dataTransfer: DataTransfer
   }) => {
     if (
-      focusMode ||
+      false ||
       !(dragMeasureFrom || isMeasureDrag([...event.dataTransfer.types]))
     ) {
       return
@@ -332,7 +448,7 @@ export function SequencePanel({
     sectionId: string,
     barId: string
   ) => {
-    if (focusMode || isInteractiveDragTarget(event.target)) {
+    if (false || isInteractiveDragTarget(event.target)) {
       event.preventDefault()
       return
     }
@@ -353,28 +469,25 @@ export function SequencePanel({
     playingIndex !== null ? (timeline[playingIndex]?.location ?? null) : null
 
   useEffect(() => {
-    if (!focusMode || playingIndex === null) return
+    if (!notebookMode || playingIndex === null) return
     playingCellRef.current?.scrollIntoView({
       behavior: 'smooth',
       block: 'center',
       inline: 'nearest',
     })
-  }, [focusMode, playingIndex])
+  }, [notebookMode, playingIndex])
 
   if (!song?.sections) return null
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="shrink-0 px-5 pt-3 pb-3">
-        {focusMode ? (
+        {notebookMode ? (
           <div className="flex min-w-0 items-center gap-3">
             <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-white">
               {song.name}
             </h2>
-            <p className="hidden shrink-0 text-xs text-cosmos-400 sm:block">
-              {playbackSummary(song)}
-            </p>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-1.5">
               <button
                 type="button"
                 onClick={isPlaying ? stop : play}
@@ -383,10 +496,20 @@ export function SequencePanel({
               >
                 {isPlaying ? '■ Stop' : '▶ Play'}
               </button>
+              {onNotebookStyleChange && (
+                <NotebookStyleSwitch
+                  value={notebookStyle}
+                  onChange={onNotebookStyleChange}
+                />
+              )}
               <button
                 type="button"
                 aria-pressed
-                onClick={onToggleFocus}
+                onClick={() => {
+                  setManagerOpen(false)
+                  setPlaybackOpen(false)
+                  onToggleNotebook?.()
+                }}
                 className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
               >
                 Exit
@@ -427,6 +550,32 @@ export function SequencePanel({
               >
                 {isPlaying ? '■ Stop' : '▶ Play'}
               </button>
+              <div
+                className="flex h-8 items-center rounded-lg border border-cosmos-700 p-0.5"
+                role="group"
+                aria-label="Undo and redo"
+              >
+                <button
+                  type="button"
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  title={`Undo ${UNDO_SHORTCUT.undo}`}
+                  aria-label="Undo"
+                  className="flex h-7 items-center rounded-md px-2.5 text-sm text-cosmos-300 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  title={`Redo ${UNDO_SHORTCUT.redo}`}
+                  aria-label="Redo"
+                  className="flex h-7 items-center rounded-md px-2.5 text-sm text-cosmos-300 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Redo
+                </button>
+              </div>
               <button
                 type="button"
                 aria-expanded={playbackOpen}
@@ -461,25 +610,26 @@ export function SequencePanel({
                   Clear
                 </button>
               )}
-              <button
-                type="button"
-                aria-pressed={false}
-                onClick={() => {
-                  setManagerOpen(false)
-                  setPlaybackOpen(false)
-                  onSelectSlot(null)
-                  onToggleFocus()
-                }}
-                className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
-              >
-                Full screen
-              </button>
+              {onToggleNotebook && (
+                <button
+                  type="button"
+                  aria-pressed={notebookMode}
+                  onClick={() => {
+                    setManagerOpen(false)
+                    setPlaybackOpen(false)
+                    onToggleNotebook()
+                  }}
+                  className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+                >
+                  Notebook
+                </button>
+              )}
             </div>
           </>
         )}
       </header>
 
-      {!focusMode && playbackOpen && (
+      {!notebookMode && playbackOpen && (
         <div
           id="playback-panel"
           className="shrink-0 border-b border-cosmos-700/70 px-5 py-3"
@@ -593,7 +743,7 @@ export function SequencePanel({
 
       <SongManager
         key={managerOpen ? 'open' : 'closed'}
-        open={!focusMode && managerOpen}
+        open={!notebookMode && managerOpen}
         songs={songs}
         activeSongId={song.id}
         onClose={() => setManagerOpen(false)}
@@ -608,11 +758,41 @@ export function SequencePanel({
       <div
         ref={scrollRef}
         className={
-          focusMode
-            ? 'min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-4'
+          notebookMode
+            ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-5'
             : 'min-h-0 flex-1 space-y-6 overflow-y-auto px-5 pb-5'
         }
       >
+        {notebookMode ? (
+          <NotebookView
+            song={song}
+            style={notebookStyle}
+            selected={selected}
+            playingLocation={playingLocation}
+            playingCellRef={bindPlayingCell}
+            onSelect={onSelectSlot}
+            onPreview={(location, slot) => {
+              if (slot.lineAudio) {
+                playLineAudio(slot.lineAudio)
+                return
+              }
+              const eventIndex = timeline.findIndex(
+                (event) =>
+                  event.location !== null &&
+                  locationsEqual(event.location, location)
+              )
+              const notes = midiByIndex[eventIndex]
+              if (!notes) return
+              playBeat(notes, {
+                style: slotPlayback(slot, song.playback),
+                seconds: timeline[eventIndex]?.seconds ?? 1.2,
+                strumPattern: slotStrumPattern(slot, song.strumPattern),
+              })
+            }}
+            onPlayFromSection={playFromSection}
+          />
+        ) : (
+          <>
         {song.sections.map((section, sectionIndex) => {
           const sectionStart = timeline.findIndex(
             (event) => event.location?.sectionId === section.id
@@ -622,32 +802,7 @@ export function SequencePanel({
             timeline.slice(sectionStart).some((event) => event.slot)
           return (
           <div key={section.id}>
-            {focusMode ? (
-              (song.sections.length > 1 ||
-                section.note.trim() ||
-                section.name.trim() !== 'A') && (
-                <div className="mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-white">{section.name}</p>
-                    {canPlayFromSection && (
-                      <button
-                        type="button"
-                        onClick={() => playFromSection(section.id)}
-                        aria-label={`Play from section ${section.name}`}
-                        title={`Play from ${section.name}`}
-                        className="rounded-md px-1.5 py-0.5 text-[11px] text-cosmos-400 transition hover:bg-nebula-600/20 hover:text-white"
-                      >
-                        ▶
-                      </button>
-                    )}
-                  </div>
-                  {section.note.trim() && (
-                    <p className="mt-0.5 text-xs text-cosmos-400">{section.note}</p>
-                  )}
-                </div>
-              )
-            ) : (
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
                     Section
@@ -687,11 +842,10 @@ export function SequencePanel({
                   </button>
                 )}
               </div>
-            )}
 
             <div
               className={
-                focusMode && section.bars.length > 1
+                false && section.bars.length > 1
                   ? 'grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3'
                   : 'grid grid-cols-1 gap-3 min-[760px]:grid-cols-2 min-[1180px]:grid-cols-3'
               }
@@ -699,30 +853,30 @@ export function SequencePanel({
               {section.bars.map((bar, barIndex) => {
                 const steps = barSteps(bar)
                 const showMeasureLabel =
-                  !focusMode ||
+                  !false ||
                   song.sections.some((item) => item.bars.length > 1) ||
                   song.sections.length > 1
-                const visibleSlots = focusMode
+                const visibleSlots = false
                   ? bar.slots
                       .map((slot, slotIndex) => ({ slot, slotIndex }))
                       .filter((item) => item.slot)
                   : bar.slots.map((slot, slotIndex) => ({ slot, slotIndex }))
-                const gridSteps = focusMode ? visibleSlots.length : steps
+                const gridSteps = false ? visibleSlots.length : steps
                 const measureStart = timeline.findIndex(
                   (event) => event.location?.barId === bar.id
                 )
                 const canPlayFromMeasure =
                   measureStart >= 0 &&
                   timeline.slice(measureStart).some((event) => event.slot)
-                const shareRow = focusMode && section.bars.length > 1
+                const shareRow = false && section.bars.length > 1
                 const measureOverflowsRow =
                   shareRow && visibleSlots.length > 4
                 return (
                 <div
                   key={bar.id}
-                  draggable={!focusMode}
+                  draggable={!false}
                   title={
-                    focusMode ? undefined : 'Drag onto another group to swap'
+                    false ? undefined : 'Drag onto another group to swap'
                   }
                   onDragStart={(event) =>
                     startMeasureDrag(event, section.id, bar.id)
@@ -758,7 +912,7 @@ export function SequencePanel({
                     setDropMeasureTarget(null)
                   }}
                   className={
-                    focusMode
+                    false
                       ? `min-w-0 ${measureOverflowsRow ? 'col-span-full' : ''}`
                       : `min-w-0 select-none rounded-xl border bg-cosmos-900/60 p-2.5 transition ${
                           dragMeasureFrom?.barId === bar.id
@@ -769,17 +923,17 @@ export function SequencePanel({
                         }`
                   }
                 >
-                  {(showMeasureLabel || !focusMode) && (
+                  {(showMeasureLabel || !false) && (
                     <div
                       className={
-                        focusMode
+                        false
                           ? 'mb-2 flex flex-wrap items-center justify-between gap-2'
                           : 'mb-2 flex cursor-grab flex-wrap items-center justify-between gap-2 active:cursor-grabbing'
                       }
                     >
                       {showMeasureLabel && (
                         <div className="flex items-center gap-1.5">
-                          {!focusMode && (
+                          {!false && (
                             <span
                               aria-hidden
                               className="grid grid-cols-2 gap-px px-0.5 text-cosmos-500"
@@ -808,7 +962,7 @@ export function SequencePanel({
                           )}
                         </div>
                       )}
-                      {!focusMode && (
+                      {!false && (
                         <div className="flex items-center gap-1.5">
                           <MeasureStepsControl
                             steps={steps}
@@ -841,7 +995,7 @@ export function SequencePanel({
                   )}
                   <div
                     className={`grid ${
-                      focusMode
+                      false
                         ? shareRow && !measureOverflowsRow
                           ? 'justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),14rem))]'
                           : 'justify-start gap-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),22rem))]'
@@ -882,35 +1036,19 @@ export function SequencePanel({
                           }
                           shape={slot ? (hydratedById.get(slot.id)?.shape ?? null) : null}
                           diagramSize={
-                            focusMode ? 'present' : diagramSizeForSteps(steps)
+                            false ? 'present' : diagramSizeForSteps(steps)
                           }
-                          steps={focusMode ? Math.max(1, gridSteps) : steps}
-                          presenting={focusMode}
+                          steps={false ? Math.max(1, gridSteps) : steps}
+                          presenting={false}
                           measureDragging={Boolean(dragMeasureFrom)}
                           songPlayback={song.playback}
                           songPattern={song.strumPattern}
                           isPlaying={isPlaying}
-                          isSelected={!focusMode && isSelected}
-                          isDrop={!focusMode && isDrop}
-                          isDragSource={!focusMode && isDragSource}
-                          cellRef={isPlaying ? playingCellRef : undefined}
+                          isSelected={!false && isSelected}
+                          isDrop={!false && isDrop}
+                          isDragSource={!false && isDragSource}
+                          cellRef={isPlaying ? bindPlayingCell : undefined}
                           onSelect={() => {
-                            if (focusMode) {
-                              if (!slot) return
-                              const notes = midiByIndex[eventIndex]
-                              if (notes) {
-                                playBeat(notes, {
-                                  style: slotPlayback(slot, song.playback),
-                                  seconds:
-                                    timeline[eventIndex]?.seconds ?? 1.2,
-                                  strumPattern: slotStrumPattern(
-                                    slot,
-                                    song.strumPattern
-                                  ),
-                                })
-                              }
-                              return
-                            }
                             onSelectSlot(location)
                           }}
                           onPreview={() => {
@@ -930,6 +1068,27 @@ export function SequencePanel({
                           onDuplicate={() => onDuplicateSlot(location)}
                           onNoteChange={(note) => onSetSlotNote(location, note)}
                           onFeelChange={(patch) => onSetSlotFeel(location, patch)}
+                          recording={
+                            recordingAt !== null &&
+                            locationsEqual(recordingAt, location)
+                          }
+                          recordError={
+                            recordingAt !== null &&
+                            locationsEqual(recordingAt, location)
+                              ? recordError
+                              : selected !== null &&
+                                  locationsEqual(selected, location)
+                                ? recordError
+                                : null
+                          }
+                          audioInputId={audioInputId}
+                          onAudioInputIdChange={onAudioInputIdChange}
+                          onStartRecord={() => void startRecording(location)}
+                          onStopRecord={() => void finishRecording(true)}
+                          onPlayClip={() => {
+                            if (slot?.lineAudio) playLineAudio(slot.lineAudio)
+                          }}
+                          onClearClip={() => onSetLineAudio(location, undefined)}
                           onToggleHighlight={(note) =>
                             onToggleHighlight(location, note)
                           }
@@ -963,7 +1122,7 @@ export function SequencePanel({
                 </div>
                 )
               })}
-              {!focusMode && (
+              {!false && (
                 <button
                   type="button"
                   onClick={() => onAddGroup(section.id)}
@@ -1009,7 +1168,7 @@ export function SequencePanel({
           )
         })}
 
-        {!focusMode && (
+        {!false && (
           <button
             type="button"
             onClick={onAddSection}
@@ -1021,10 +1180,12 @@ export function SequencePanel({
 
         {slotCount === 0 && (
           <p className="text-center text-xs text-cosmos-400">
-            {focusMode
+            {false
               ? 'This sequence has no chords yet.'
               : `Add a voicing to the highlighted step, or the next empty one. Each group can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
           </p>
+        )}
+          </>
         )}
       </div>
     </section>
@@ -1049,13 +1210,21 @@ interface SlotCellProps {
   isSelected: boolean
   isDrop: boolean
   isDragSource: boolean
-  cellRef?: Ref<HTMLDivElement>
+  cellRef?: (el: HTMLElement | null) => void
   onSelect: () => void
   onPreview: () => void
   onRemove: () => void
   onDuplicate: () => void
   onNoteChange: (note: string) => void
   onFeelChange: (patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => void
+  recording?: boolean
+  recordError?: string | null
+  audioInputId: string
+  onAudioInputIdChange: (deviceId: string) => void
+  onStartRecord: () => void
+  onStopRecord: () => void
+  onPlayClip: () => void
+  onClearClip: () => void
   onToggleHighlight: (note: { string: number; fret: number }) => void
   onExtendFrets: (edge: 'low' | 'high', delta: number) => void
   onOctaveShift: (deltaFrets: number) => void
@@ -1090,6 +1259,14 @@ function SlotCell({
   onDuplicate,
   onNoteChange,
   onFeelChange,
+  recording = false,
+  recordError = null,
+  audioInputId,
+  onAudioInputIdChange,
+  onStartRecord,
+  onStopRecord,
+  onPlayClip,
+  onClearClip,
   onToggleHighlight,
   onExtendFrets,
   onOctaveShift,
@@ -1119,17 +1296,26 @@ function SlotCell({
     onDrop(event)
   }
 
+  const isLine = Boolean(slot && isLineGroupId(slot.groupId))
   const fretBox =
     slot && fingering
       ? diagramFretWindow(fingering, {
-          highlightedFrets: slot.highlightedNotes?.map((note) => note.fret),
+          highlightedFrets: (isLine
+            ? slot.lineNotes
+            : slot.highlightedNotes
+          )?.map((note) => note.fret),
           extendLow: slot.extendLow,
           extendHigh: slot.extendHigh,
+          ...(isLine ? { tightHighlights: true, minRows: 1 } : {}),
         })
       : null
-  const chordName = slot ? displayChordSymbol(slot.chordSymbol) : ''
-  const chordParts = slot ? splitChordDisplay(slot.chordSymbol) : null
-  const currentChord = slot
+  const chordName = slot
+    ? isLine
+      ? 'Line'
+      : displayChordSymbol(slot.chordSymbol)
+    : ''
+  const chordParts = slot && !isLine ? splitChordDisplay(slot.chordSymbol) : null
+  const currentChord = slot && !isLine
     ? tryParseChord(slot.chordSymbol).chord
     : null
   const targetTones =
@@ -1149,7 +1335,7 @@ function SlotCell({
     (slot?.highlightedNotes ?? []).map((note) => cellPc(note))
   )
   const lickNotes =
-    showLickOutline && fingering && currentChord
+    showLickOutline && !isLine && fingering && currentChord
       ? lickOutlineNotes(fingering, currentChord)
       : []
 
@@ -1191,7 +1377,9 @@ function SlotCell({
       } ${
         isPlaying
           ? 'border-star-400 bg-star-400/15'
-          : isDrop
+          : recording
+            ? 'border-rose-400 bg-rose-400/10'
+            : isDrop
             ? 'border-nebula-400 bg-nebula-500/15'
             : isSelected
               ? 'border-nebula-500/70 bg-nebula-500/10'
@@ -1231,7 +1419,10 @@ function SlotCell({
                   shape={shape}
                   size={diagramSize}
                   showDegrees
-                  highlightedNotes={slot.highlightedNotes}
+                  kind={isLine ? 'line' : 'chord'}
+                  highlightedNotes={
+                    isLine ? slot.lineNotes : slot.highlightedNotes
+                  }
                   extendLow={slot.extendLow}
                   extendHigh={slot.extendHigh}
                   onToggleNote={onToggleHighlight}
@@ -1285,9 +1476,12 @@ function SlotCell({
                 <ChordNameText parts={chordParts} fallback={chordName} />
               </p>
               <p className="mt-0.5 truncate text-sm text-nebula-400">
-                {slot.groupId} · {shortInversion(slot.inversion)}
-                {slot.playback ? ` · ${playbackLabel(slot.playback)}` : ''}
-                {slotPlayback(slot, songPlayback) === 'strum' &&
+                {slotVoicingLabel(slot)}
+                {!isLine && slot.playback
+                  ? ` · ${playbackLabel(slot.playback)}`
+                  : ''}
+                {!isLine &&
+                slotPlayback(slot, songPlayback) === 'strum' &&
                 slot.strumPattern
                   ? ` · ${formatStrumPattern(slot.strumPattern)}`
                   : ''}
@@ -1302,24 +1496,29 @@ function SlotCell({
                     <ChordNameText parts={chordParts} fallback={chordName} />
                   </p>
                   <p className="mt-0.5 truncate text-xs text-nebula-300">
-                    {slot.groupId} · {shortInversion(slot.inversion)}
+                    {slotVoicingLabel(slot)}
+                    {isLine && slot.lineAudio
+                      ? ` · take ${slot.lineAudio.duration.toFixed(1)}s`
+                      : ''}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPreview()
-                    }}
-                    onDragEnter={allowDrop}
-                    onDragOver={allowDrop}
-                    onDrop={handleDrop}
-                    aria-label={`Hear ${chordName}`}
-                    className={slotIconClass}
-                  >
-                    ▶
-                  </button>
+                  {!isLine && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onPreview()
+                      }}
+                      onDragEnter={allowDrop}
+                      onDragOver={allowDrop}
+                      onDrop={handleDrop}
+                      aria-label={`Hear ${chordName}`}
+                      className={slotIconClass}
+                    >
+                      ▶
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1350,17 +1549,32 @@ function SlotCell({
                   </button>
                 </div>
               </div>
-              <SlotFeelControls
-                slot={slot}
-                fingering={fingering}
-                songPlayback={songPlayback}
-                songPattern={songPattern}
-                onChange={onFeelChange}
-                onOctaveShift={onOctaveShift}
-                onDragEnter={allowDrop}
-                onDragOver={allowDrop}
-                onDrop={handleDrop}
-              />
+              {!isLine && (
+                <SlotFeelControls
+                  slot={slot}
+                  fingering={fingering}
+                  songPlayback={songPlayback}
+                  songPattern={songPattern}
+                  onChange={onFeelChange}
+                  onOctaveShift={onOctaveShift}
+                  onDragEnter={allowDrop}
+                  onDragOver={allowDrop}
+                  onDrop={handleDrop}
+                />
+              )}
+              {isLine && (
+                <LineTakeControls
+                  recording={recording}
+                  hasClip={Boolean(slot.lineAudio)}
+                  error={recordError}
+                  audioInputId={audioInputId}
+                  onAudioInputIdChange={onAudioInputIdChange}
+                  onStartRecord={onStartRecord}
+                  onStopRecord={onStopRecord}
+                  onPlayClip={onPlayClip}
+                  onClearClip={onClearClip}
+                />
+              )}
               <input
                 value={slot.note}
                 onChange={(e) => onNoteChange(e.target.value)}
@@ -1402,6 +1616,20 @@ function isSlotDragTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element && Boolean(target.closest('[data-slot-cell]'))
   )
+}
+
+const UNDO_SHORTCUT = /Mac|iPhone|iPad/.test(
+  typeof navigator === 'undefined' ? '' : navigator.platform
+)
+  ? { undo: '⌘Z', redo: '⇧⌘Z' }
+  : { undo: 'Ctrl+Z', redo: 'Ctrl+Y' }
+
+function undoRedoAction(event: KeyboardEvent): 'undo' | 'redo' | null {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return null
+  const key = event.key.toLowerCase()
+  if (key === 'z') return event.shiftKey ? 'redo' : 'undo'
+  if (key === 'y' && !event.shiftKey) return 'redo'
+  return null
 }
 
 function playbackLabel(playback: PlaybackStyle): string {
@@ -1673,6 +1901,88 @@ function ChordNameText({
       {parts.suffix}
     </>
   )
+}
+
+function LineTakeControls({
+  recording,
+  hasClip,
+  error,
+  audioInputId,
+  onAudioInputIdChange,
+  onStartRecord,
+  onStopRecord,
+  onPlayClip,
+  onClearClip,
+}: {
+  recording: boolean
+  hasClip: boolean
+  error: string | null
+  audioInputId: string
+  onAudioInputIdChange: (deviceId: string) => void
+  onStartRecord: () => void
+  onStopRecord: () => void
+  onPlayClip: () => void
+  onClearClip: () => void
+}) {
+  return (
+    <div
+      className="mt-2 space-y-1.5"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <AudioInputSelect
+        compact
+        value={audioInputId}
+        onChange={onAudioInputIdChange}
+      />
+      <div className="flex gap-1.5">
+        {recording ? (
+          <button
+            type="button"
+            onClick={onStopRecord}
+            className={`${slotSelectClass} border-rose-400 text-rose-200`}
+          >
+            Stop
+          </button>
+        ) : (
+          <button type="button" onClick={onStartRecord} className={slotSelectClass}>
+            Record
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onPlayClip}
+          disabled={!hasClip || recording}
+          className={slotSelectClass}
+        >
+          ▶
+        </button>
+        <button
+          type="button"
+          onClick={onClearClip}
+          disabled={!hasClip || recording}
+          className={slotSelectClass}
+        >
+          Clear
+        </button>
+      </div>
+      {recording ? (
+        <p className="text-[11px] text-rose-300">
+          Recording… tap Stop or wait {MAX_LINE_RECORD_SECONDS}s
+        </p>
+      ) : error ? (
+        <p className="text-[11px] text-rose-300">{error}</p>
+      ) : null}
+    </div>
+  )
+}
+
+function slotVoicingLabel(slot: SequenceSlot): string {
+  if (isLineGroupId(slot.groupId)) {
+    const n = slot.lineNotes?.length ?? 0
+    return `Line · ${n} note${n === 1 ? '' : 's'}`
+  }
+  return `${slot.groupId} · ${shortInversion(slot.inversion)}`
 }
 
 function shortInversion(inversion: number): string {

@@ -8,6 +8,7 @@
  */
 
 import { midiToFrequency } from '../theory/pitch'
+import { stopLineAudio } from './lineAudio'
 
 let context: AudioContext | null = null
 let masterGain: GainNode | null = null
@@ -85,6 +86,7 @@ export function stopAll(): void {
     }
   }
   activeVoices = []
+  stopLineAudio()
 }
 
 export interface PlayOptions {

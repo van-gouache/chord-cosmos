@@ -11,7 +11,7 @@ import { STANDARD_TUNING, STRING_COUNT, type Fingering } from '../theory/fretboa
 import { mod12 } from '../theory/pitch'
 import type { VoicingShape } from '../theory/vsystem'
 
-export type DiagramSize = 'sm' | 'md' | 'lg' | 'seq' | 'present'
+export type DiagramSize = 'sm' | 'nb' | 'md' | 'lg' | 'seq' | 'present'
 
 interface Props {
   fingering: Fingering
@@ -21,6 +21,10 @@ interface Props {
   showDegrees?: boolean
   /** Extra hollow markers on empty string/fret cells. */
   highlightedNotes?: readonly { string: number; fret: number }[]
+  /** Line outlines hide mutes and number notes in click order. */
+  kind?: 'chord' | 'line'
+  /** Pitch class used to colour outlines; defaults to the grip's root. */
+  rootPc?: number
   /** When set, clicking an empty cell toggles an outline there. */
   onToggleNote?: (note: { string: number; fret: number }) => void
   /** Extra fret rows toward the nut. */
@@ -54,6 +58,17 @@ const SIZES: Record<
     padTop: 16,
     padLabel: 22,
     padSide: 14,
+    padBottom: 4,
+  },
+  nb: {
+    stringGap: 14,
+    fretGap: 17,
+    dot: 6.4,
+    font: 6.6,
+    markerFont: 7.2,
+    padTop: 15,
+    padLabel: 18,
+    padSide: 10,
     padBottom: 4,
   },
   md: {
@@ -108,6 +123,8 @@ export function ChordDiagram({
   size = 'md',
   showDegrees = true,
   highlightedNotes,
+  kind = 'chord',
+  rootPc: rootPcOverride,
   onToggleNote,
   extendLow,
   extendHigh,
@@ -115,14 +132,16 @@ export function ChordDiagram({
 }: Props) {
   const s = SIZES[size]
 
+  const isLine = kind === 'line'
   const box = useMemo(
     () =>
       diagramFretWindow(fingering, {
         highlightedFrets: highlightedNotes?.map((note) => note.fret),
         extendLow,
         extendHigh,
+        ...(isLine ? { tightHighlights: true, minRows: 1 } : {}),
       }),
-    [fingering, highlightedNotes, extendLow, extendHigh]
+    [fingering, highlightedNotes, extendLow, extendHigh, isLine]
   )
 
   const { startFret, fretRows, showNut } = box
@@ -143,7 +162,11 @@ export function ChordDiagram({
   const degreeOf = (voice: number) => toneOf(voice)?.degree ?? ''
   const styleOf = (voice: number) => intervalStyle(toneOf(voice)?.semitones)
 
-  const playedStrings = new Set(fingering.notes.map((n) => n.string))
+  const playedStrings = new Set(
+    isLine
+      ? (highlightedNotes ?? []).map((note) => note.string)
+      : fingering.notes.map((n) => n.string)
+  )
   const noteByString = new Map(fingering.notes.map((n) => [n.string, n]))
   const occupied = new Set(
     fingering.notes.map((note) => cellKey(note.string, note.fret))
@@ -154,12 +177,14 @@ export function ChordDiagram({
       .map((note) => cellKey(note.string, note.fret))
   )
   const interactive = Boolean(onToggleNote)
-  const rootPc = rootPitchClass(fingering, shape)
+  const rootPc = rootPcOverride ?? rootPitchClass(fingering, shape)
   const noteHits: NoteHit[] = []
 
   if (interactive) {
     for (let stringIndex = 0; stringIndex < STRING_COUNT; stringIndex++) {
-      if (!occupied.has(cellKey(stringIndex, 0))) {
+      const includeOpen =
+        !isLine || showNut || outlined.has(cellKey(stringIndex, 0))
+      if (includeOpen && !occupied.has(cellKey(stringIndex, 0))) {
         noteHits.push({
           stringIndex,
           fret: 0,
@@ -232,6 +257,18 @@ export function ChordDiagram({
     const cy = fret === 0 ? markerY : y(fret)
     const radius = fret === 0 ? s.dot * 0.9 : s.dot
     const tone = toneAt(rootPc, stringIndex, fret)
+    if (isLine) {
+      return (
+        <g key={`outline-${stringIndex}-${fret}`}>
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            className={intervalStyle(0).fill}
+          />
+        </g>
+      )
+    }
     return (
       <g key={`outline-${stringIndex}-${fret}`}>
         <circle
@@ -335,7 +372,8 @@ export function ChordDiagram({
         ))}
 
       {/* Open / muted markers above the nut */}
-      {Array.from({ length: STRING_COUNT }, (_, i) => {
+      {!isLine &&
+        Array.from({ length: STRING_COUNT }, (_, i) => {
         const fret = fingering.strings[i]
         if (fret === null && outlined.has(cellKey(i, 0))) return null
         if (fret === null) {
@@ -371,7 +409,8 @@ export function ChordDiagram({
       })}
 
       {/* Barre bar behind the dots */}
-      {fingering.barreFret !== null &&
+      {!isLine &&
+        fingering.barreFret !== null &&
         (() => {
           const barred = fingering.notes.filter(
             (n) => n.fret === fingering.barreFret
@@ -391,17 +430,18 @@ export function ChordDiagram({
         })()}
 
       {/* Fretted notes */}
-      {fingering.notes
-        .filter((n) => n.fret > 0)
-        .map((note) =>
-          renderDot(
-            note.string,
-            x(note.string),
-            y(note.fret),
-            s.dot,
-            s.font
-          )
-        )}
+      {!isLine &&
+        fingering.notes
+          .filter((n) => n.fret > 0)
+          .map((note) =>
+            renderDot(
+              note.string,
+              x(note.string),
+              y(note.fret),
+              s.dot,
+              s.font
+            )
+          )}
 
       {[...outlined].map((key) => {
         const [stringIndex, fret] = key.split(':').map(Number)
@@ -425,7 +465,7 @@ export function ChordDiagram({
             data-highlight-note=""
             draggable={false}
             aria-pressed={highlighted}
-            aria-label={`${highlighted ? 'Remove' : 'Add'} ${tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
+            aria-label={`${highlighted ? 'Remove' : 'Add'} ${isLine ? 'line' : tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
             className="pointer-events-auto absolute cursor-pointer touch-manipulation rounded-full border-0 bg-transparent p-0 hover:bg-white/10"
             style={{
               left: `${((hit.cx - hit.cellW / 2) / width) * 100}%`,

@@ -45,22 +45,41 @@ export function diagramFretWindow(
     extendLow?: number
     extendHigh?: number
     maxFret?: number
+    /** Crop to outlined frets instead of an empty chord grip’s 4-row nut box. */
+    tightHighlights?: boolean
+    minRows?: number
   } = {}
 ): DiagramFretWindow {
   const maxFret = options.maxFret ?? MAX_PLAYABLE_FRET
-  const base = fretWindow(fingering)
+  const minRows = options.minRows ?? 4
   const extras = (options.highlightedFrets ?? []).filter((fret) => fret > 0)
-  let lo = extras.length > 0 ? Math.min(base.startFret, ...extras) : base.startFret
-  let hi =
-    extras.length > 0
-      ? Math.max(base.startFret + base.fretRows - 1, ...extras)
-      : base.startFret + base.fretRows - 1
+  const hasOpen = (options.highlightedFrets ?? []).some((fret) => fret === 0)
+
+  let lo: number
+  let hi: number
+  if (options.tightHighlights) {
+    if (extras.length === 0) {
+      lo = 1
+      hi = 1
+    } else {
+      lo = hasOpen ? 1 : Math.min(...extras)
+      hi = Math.max(...extras)
+    }
+  } else {
+    const base = fretWindow(fingering)
+    lo = extras.length > 0 ? Math.min(base.startFret, ...extras) : base.startFret
+    hi =
+      extras.length > 0
+        ? Math.max(base.startFret + base.fretRows - 1, ...extras)
+        : base.startFret + base.fretRows - 1
+  }
+
   lo = Math.max(1, lo - Math.max(0, options.extendLow ?? 0))
   hi = Math.min(maxFret, hi + Math.max(0, options.extendHigh ?? 0))
   if (hi < lo) hi = lo
   return {
     startFret: lo,
-    fretRows: Math.max(4, hi - lo + 1),
+    fretRows: Math.max(minRows, hi - lo + 1),
     showNut: lo === 1,
     canExtendLow: lo > 1,
     canExtendHigh: hi < maxFret,

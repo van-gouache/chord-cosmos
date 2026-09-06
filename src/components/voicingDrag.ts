@@ -1,5 +1,6 @@
 import {
   VOICING_DRAG_MIME,
+  linePayload,
   slotFromVoicingPayload,
   voicingPayload,
   type SequenceSlot,
@@ -15,6 +16,18 @@ export function beginVoicingDrag(
   const payload = voicingPayload(voicing)
   event.dataTransfer.setData(VOICING_DRAG_MIME, payload)
   // Same JSON on text/plain so the drop still reads if a browser strips custom types.
+  event.dataTransfer.setData('text/plain', payload)
+  event.dataTransfer.effectAllowed = 'copy'
+}
+
+export function beginLineDrag(
+  event: { dataTransfer: DataTransfer | null; stopPropagation: () => void },
+  slot: SequenceSlot
+): void {
+  if (!event.dataTransfer) return
+  event.stopPropagation()
+  const payload = linePayload(slot)
+  event.dataTransfer.setData(VOICING_DRAG_MIME, payload)
   event.dataTransfer.setData('text/plain', payload)
   event.dataTransfer.effectAllowed = 'copy'
 }
