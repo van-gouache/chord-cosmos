@@ -17,6 +17,8 @@ import {
   appendBarIfNeeded,
   cloneSlot,
   duplicateBar,
+  duplicateSection,
+  setSectionCollapsed,
   moveBar,
   cloneSong,
   countSlots,
@@ -41,7 +43,6 @@ import {
   setBarSteps,
   slotFromVoicing,
   slotFromLineNotes,
-  type PlaybackStyle,
   type SequenceSlot,
   type SlotLocation,
   type Song,
@@ -264,10 +265,30 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
-  const setSlotFeel = useCallback(
-    (location: SlotLocation, patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => {
+  const setSlotBeats = useCallback(
+    (location: SlotLocation, beats: number) => {
       if (!activeSong) return
-      updateSong(activeSong.id, (song) => patchSlot(song, location, patch))
+      updateSong(activeSong.id, (song) => patchSlot(song, location, { beats }))
+    },
+    [activeSong, updateSong]
+  )
+
+  const setSlotPlayback = useCallback(
+    (location: SlotLocation, playback: SequenceSlot['playback']) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        patchSlot(song, location, { playback })
+      )
+    },
+    [activeSong, updateSong]
+  )
+
+  const setSlotStrumPattern = useCallback(
+    (location: SlotLocation, strumPattern: string | undefined) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        patchSlot(song, location, { strumPattern })
+      )
     },
     [activeSong, updateSong]
   )
@@ -334,6 +355,24 @@ export function useSongs() {
     (sectionId: string, barId: string) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => duplicateBar(song, sectionId, barId))
+    },
+    [activeSong, updateSong]
+  )
+
+  const duplicateSectionBy = useCallback(
+    (sectionId: string) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) => duplicateSection(song, sectionId))
+    },
+    [activeSong, updateSong]
+  )
+
+  const setSectionCollapsedBy = useCallback(
+    (sectionId: string, collapsed: boolean) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        setSectionCollapsed(song, sectionId, collapsed)
+      )
     },
     [activeSong, updateSong]
   )
@@ -451,22 +490,6 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
-  const setPlayback = useCallback(
-    (playback: PlaybackStyle) => {
-      if (!activeSong) return
-      updateSong(activeSong.id, (song) => ({ ...song, playback }))
-    },
-    [activeSong, updateSong]
-  )
-
-  const setStrumPattern = useCallback(
-    (strumPattern: string | undefined) => {
-      if (!activeSong) return
-      updateSong(activeSong.id, (song) => ({ ...song, strumPattern }))
-    },
-    [activeSong, updateSong]
-  )
-
   const renameSong = useCallback(
     (songId: string, name: string) => {
       updateSong(songId, (song) => ({ ...song, name }), { coalesce: true })
@@ -541,7 +564,9 @@ export function useSongs() {
     relocateSlot,
     duplicateSlot,
     setSlotNote,
-    setSlotFeel,
+    setSlotBeats,
+    setSlotPlayback,
+    setSlotStrumPattern,
     setLineAudio,
     toggleHighlight,
     extendFrets,
@@ -551,13 +576,13 @@ export function useSongs() {
     moveBar: moveBarBy,
     removeBar,
     addSection,
+    duplicateSection: duplicateSectionBy,
+    setSectionCollapsed: setSectionCollapsedBy,
     renameSection,
     setSectionNote,
     removeSection,
     setBpm,
     setMeasureSteps,
-    setPlayback,
-    setStrumPattern,
     renameSong,
     newSong,
     duplicateSong,

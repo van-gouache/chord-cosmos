@@ -107,7 +107,9 @@ export function SongManager({
       const added = onImport(JSON.parse(text))
       if (added === 0) {
         setImportError('That file did not contain a sequence.')
+        return
       }
+      onClose()
     } catch {
       setImportError('Could not read that file as JSON.')
     }

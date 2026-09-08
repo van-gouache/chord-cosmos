@@ -8,6 +8,8 @@ import {
   appendBarIfNeeded,
   cloneSlot,
   duplicateBar,
+  duplicateSection,
+  setSectionCollapsed,
   moveBar,
   cloneSong,
   countSlots,
@@ -40,6 +42,7 @@ import {
   slotFromLineNotes,
   slotMidiNotes,
   setBarSteps,
+  slotBeats,
   stepSeconds,
   type SequenceSlot,
   type Song,
@@ -360,23 +363,31 @@ describe('song grid helpers', () => {
     expect(moveSlot(song, location, location)).toBe(song)
   })
 
-  it('walks empty beats as rests in the play timeline', () => {
+  it('walks empty steps in the play timeline without giving them time', () => {
     const song = songWithSlots(['Em7'])
-    const events = playTimeline(song)
+    const events = playTimeline({ ...song, bpm: 60 })
     expect(events).toHaveLength(BEATS_PER_BAR)
     expect(events[0].slot?.chordSymbol).toBe('Em7')
+    expect(slotBeats(events[0].slot)).toBe(4)
+    expect(events[0].seconds).toBe(4)
     expect(events.slice(1).every((e) => e.slot === null)).toBe(true)
+    expect(events.slice(1).every((e) => e.seconds === 0)).toBe(true)
     expect(events.map((e) => e.index)).toEqual([0, 1, 2, 3])
-    expect(events.every((e) => e.seconds === stepSeconds(song.bpm, 4))).toBe(true)
   })
 
-  it('gives each measure its own step length in the play timeline', () => {
+  it('lets each chord choose how many beats it lasts', () => {
     const song = songWithSlots(['Em7', 'A7'])
-    const first = setBarSteps(song, song.sections[0].bars[0].id, 2)
-    const events = playTimeline({ ...first, bpm: 60 })
-    expect(events).toHaveLength(2)
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const next = patchSlot({ ...song, bpm: 60 }, location, { beats: 2 })
+    const events = playTimeline(next)
     expect(events[0].seconds).toBe(2)
-    expect(events[1].seconds).toBe(2)
+    expect(events[1].seconds).toBe(4)
+    expect(next.sections[0].bars[0].slots[0]?.beats).toBe(2)
+    expect(patchSlot(next, location, { beats: 4 }).sections[0].bars[0].slots[0]?.beats).toBeUndefined()
   })
 
   it('clones a slot with a new id', () => {
@@ -464,6 +475,30 @@ describe('song grid helpers', () => {
     expect(missing.sections[0].bars).toHaveLength(1)
   })
 
+  it('duplicates a section immediately after the original', () => {
+    const song = songWithSlots(['Em7', 'A7'])
+    const section = song.sections[0]
+    const next = duplicateSection(song, section.id)
+    expect(next.sections).toHaveLength(2)
+    const [first, copy] = next.sections
+    expect(copy.id).not.toBe(first.id)
+    expect(copy.name).toBe(`${first.name} copy`)
+    expect(copy.collapsed).toBeFalsy()
+    expect(copy.bars).toHaveLength(first.bars.length)
+    expect(copy.bars[0].id).not.toBe(first.bars[0].id)
+    expect(copy.bars[0].slots[0]?.id).not.toBe(first.bars[0].slots[0]?.id)
+    expect(copy.bars[0].slots[0]?.chordSymbol).toBe(
+      first.bars[0].slots[0]?.chordSymbol
+    )
+
+    const collapsed = setSectionCollapsed(next, first.id, true)
+    expect(collapsed.sections[0].collapsed).toBe(true)
+    const opened = setSectionCollapsed(collapsed, first.id, false)
+    expect(opened.sections[0].collapsed).toBeUndefined()
+
+    expect(duplicateSection(song, 'nope').sections).toHaveLength(1)
+  })
+
   it('swaps two measures in the same section', () => {
     const song = songWithSlots([
       'Em7',
@@ -544,7 +579,7 @@ describe('song grid helpers', () => {
     }
     const text = exportSong(song)
     expect(text).toContain('Tune')
-    expect(text).toContain('120 bpm · arp-up')
+    expect(text).toContain('120 bpm')
     expect(text).toContain('m1 (4).')
     expect(text).toContain('[Verse]')
     expect(text).toContain('keep it sparse')
@@ -598,6 +633,13 @@ describe('song grid helpers', () => {
     })
     expect(cleared.sections[0].bars[0].slots[0]?.playback).toBeUndefined()
     expect(cleared.sections[0].bars[0].slots[0]?.strumPattern).toBeUndefined()
+
+    const strum = patchSlot(overridden, location, { playback: 'strum' })
+    expect(strum.sections[0].bars[0].slots[0]?.playback).toBeUndefined()
+    expect(
+      patchSlot(overridden, location, { strumPattern: 'd' }).sections[0].bars[0]
+        .slots[0]?.strumPattern
+    ).toBeUndefined()
   })
 
   it('bumps a slot up an octave and still hydrates the high-fret tab', () => {

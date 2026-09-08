@@ -53,6 +53,9 @@ export const BEATS_PER_BAR = DEFAULT_STEPS_PER_MEASURE
 export const MIN_BPM = 40
 export const MAX_BPM = 220
 export const DEFAULT_BPM = 90
+export const DEFAULT_SLOT_BEATS = 4
+export const MIN_SLOT_BEATS = 1
+export const MAX_SLOT_BEATS = 32
 
 export type PlaybackStyle = 'strum' | 'arp-up' | 'arp-down'
 export type StrumStroke = 'd' | 'u' | 'x'
@@ -80,7 +83,9 @@ export interface SequenceSlot {
   inversion: number
   tab: string
   note: string
-  /** When set, this step ignores the song-level feel. */
+  /** How many beats this chord lasts. Omitted means `DEFAULT_SLOT_BEATS`. */
+  beats?: number
+  /** How this chord is played. Omitted means strum. */
   playback?: PlaybackStyle
   /** Down/up/rest strokes for this step when it strums. */
   strumPattern?: string
@@ -113,6 +118,7 @@ export interface Section {
   name: string
   note: string
   bars: Bar[]
+  collapsed?: boolean
 }
 
 export interface Song {
@@ -143,9 +149,9 @@ export interface HydratedSlot {
 export interface PlayEvent {
   slot: SequenceSlot | null
   location: SlotLocation | null
-  /** Flattened playhead index, including rests. */
+  /** Flattened playhead index, including empty steps. */
   index: number
-  /** How long this step lasts so its measure still occupies four beats. */
+  /** How long this step lasts at the song tempo. */
   seconds: number
 }
 
@@ -220,6 +226,22 @@ export function cloneSong(song: Song, name = `${song.name} copy`): Song {
       })),
     })),
   }
+}
+
+export function clampBeats(value: unknown): number {
+  const n = typeof value === 'number' ? value : DEFAULT_SLOT_BEATS
+  if (!Number.isFinite(n)) return DEFAULT_SLOT_BEATS
+  return Math.min(MAX_SLOT_BEATS, Math.max(MIN_SLOT_BEATS, Math.round(n)))
+}
+
+export function slotBeats(slot: SequenceSlot | null | undefined): number {
+  if (!slot) return 0
+  return slot.beats == null ? DEFAULT_SLOT_BEATS : clampBeats(slot.beats)
+}
+
+/** Seconds for one beat at the given tempo. */
+export function beatSeconds(bpm: number): number {
+  return 60 / Math.max(1, bpm)
 }
 
 /** Seconds one step should last so a measure still occupies four beats. */
@@ -351,6 +373,56 @@ export function cloneBar(bar: Bar): Bar {
     id: newId(),
     slots: bar.slots.map((slot) => (slot ? cloneSlot(slot) : null)),
   }
+}
+
+/** Deep copy of a section with fresh ids so it can sit beside the original. */
+export function cloneSection(section: Section): Section {
+  return {
+    id: newId(),
+    name: section.name,
+    note: section.note,
+    collapsed: section.collapsed,
+    bars: section.bars.map((bar) => cloneBar(bar)),
+  }
+}
+
+export function duplicateSection(song: Song, sectionId: string): Song {
+  const index = song.sections.findIndex((section) => section.id === sectionId)
+  if (index < 0) return song
+  const source = song.sections[index]
+  const copy = cloneSection(source)
+  copy.name = copiedSectionName(
+    source.name,
+    song.sections.map((section) => section.name)
+  )
+  copy.collapsed = undefined
+  const sections = [...song.sections]
+  sections.splice(index + 1, 0, copy)
+  return { ...song, sections }
+}
+
+export function setSectionCollapsed(
+  song: Song,
+  sectionId: string,
+  collapsed: boolean
+): Song {
+  return {
+    ...song,
+    sections: song.sections.map((section) =>
+      section.id === sectionId
+        ? { ...section, collapsed: collapsed || undefined }
+        : section
+    ),
+  }
+}
+
+function copiedSectionName(name: string, existing: string[]): string {
+  const base = name.trim() || 'Section'
+  const taken = new Set(existing)
+  if (!taken.has(`${base} copy`)) return `${base} copy`
+  let n = 2
+  while (taken.has(`${base} copy ${n}`)) n++
+  return `${base} copy ${n}`
 }
 
 /** Swaps two measures, or moves one to the end of a section if `beforeBarId` is omitted. */
@@ -581,19 +653,19 @@ export function nextEmptyAfter(
   return null
 }
 
-/** Walk the grid in play order, including empty steps as rests. */
+/** Walk the grid in play order. Empty steps take no time; chords last their beat count. */
 export function playTimeline(song: Song): PlayEvent[] {
   const events: PlayEvent[] = []
   let index = 0
+  const secondsPerBeat = beatSeconds(song.bpm)
   for (const section of song.sections ?? []) {
     for (const bar of section.bars) {
-      const seconds = stepSeconds(song.bpm, barSteps(bar))
       bar.slots.forEach((slot, slotIndex) => {
         events.push({
           slot,
           location: { sectionId: section.id, barId: bar.id, slotIndex },
           index,
-          seconds,
+          seconds: slotBeats(slot) * secondsPerBeat,
         })
         index++
       })
@@ -641,17 +713,17 @@ export function formatStrumPattern(value: string | undefined): string {
 }
 
 export function slotPlayback(
-  slot: SequenceSlot | null | undefined,
-  songPlayback: PlaybackStyle
+  slot: SequenceSlot | null | undefined
 ): PlaybackStyle {
-  return slot?.playback ?? songPlayback
+  return slot?.playback === 'arp-up' || slot?.playback === 'arp-down'
+    ? slot.playback
+    : 'strum'
 }
 
 export function slotStrumPattern(
-  slot: SequenceSlot | null | undefined,
-  songPattern: string | undefined
+  slot: SequenceSlot | null | undefined
 ): string {
-  return slot?.strumPattern ?? songPattern ?? DEFAULT_STRUM_PATTERN
+  return slot?.strumPattern ?? DEFAULT_STRUM_PATTERN
 }
 
 export function patchSlot(
@@ -664,9 +736,24 @@ export function patchSlot(
   const slot = bar?.slots[location.slotIndex]
   if (!slot) return song
   const next = { ...slot, ...patch }
-  if ('playback' in patch && patch.playback === undefined) delete next.playback
-  if ('strumPattern' in patch && patch.strumPattern === undefined) {
-    delete next.strumPattern
+  if ('beats' in patch) {
+    if (patch.beats == null || clampBeats(patch.beats) === DEFAULT_SLOT_BEATS) {
+      delete next.beats
+    } else {
+      next.beats = clampBeats(patch.beats)
+    }
+  }
+  if ('playback' in patch) {
+    if (!patch.playback || patch.playback === 'strum') delete next.playback
+    else next.playback = patch.playback
+  }
+  if ('strumPattern' in patch) {
+    const normalized = normalizeStrumPattern(patch.strumPattern)
+    if (!normalized || normalized === DEFAULT_STRUM_PATTERN) {
+      delete next.strumPattern
+    } else {
+      next.strumPattern = normalized
+    }
   }
   if ('highlightedNotes' in patch && patch.highlightedNotes === undefined) {
     delete next.highlightedNotes
@@ -896,6 +983,12 @@ interface StoredState {
   activeSongId: string | null
 }
 
+function readSlotBeats(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const beats = clampBeats(value)
+  return beats === DEFAULT_SLOT_BEATS ? undefined : beats
+}
+
 function isPlayback(value: unknown): value is PlaybackStyle {
   return value === 'strum' || value === 'arp-up' || value === 'arp-down'
 }
@@ -916,6 +1009,7 @@ function readSlot(value: unknown): SequenceSlot | null {
     inversion: typeof s.inversion === 'number' ? s.inversion : 0,
     tab: s.tab,
     note: typeof s.note === 'string' ? s.note : '',
+    beats: readSlotBeats(s.beats),
     playback: isPlayback(s.playback) ? s.playback : undefined,
     strumPattern: normalizeStrumPattern(s.strumPattern),
     highlightedNotes: readHighlightedNotes(s.highlightedNotes),
@@ -1024,6 +1118,7 @@ function normalizeSection(value: unknown, fallbackSteps: number): Section | null
     id: typeof raw.id === 'string' ? raw.id : newId(),
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : 'A',
     note: typeof raw.note === 'string' ? raw.note : '',
+    collapsed: raw.collapsed === true ? true : undefined,
     bars: bars.length > 0 ? bars : [emptyBar(fallbackSteps)],
   }
 }
@@ -1170,11 +1265,7 @@ export function exportSong(song: Song): string {
   const header = [
     song.name,
     '='.repeat(song.name.length),
-    `${song.bpm} bpm · ${song.playback}${
-      song.playback === 'strum' && song.strumPattern
-        ? ` ${formatStrumPattern(song.strumPattern)}`
-        : ''
-    } · ${countSlots(song)} chords`,
+    `${song.bpm} bpm · ${countSlots(song)} chords`,
     '',
   ]
   const body = song.sections.flatMap((section) => {

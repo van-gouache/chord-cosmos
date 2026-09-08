@@ -27,10 +27,11 @@ import { lickOutlineNotes } from '../theory/lickOutline'
 import {
   DEFAULT_STRUM_PATTERN,
   MAX_BPM,
+  MAX_SLOT_BEATS,
   MAX_STEPS_PER_MEASURE,
   MIN_BPM,
+  MIN_SLOT_BEATS,
   MIN_STEPS_PER_MEASURE,
-  STRUM_PATTERNS,
   barSteps,
   exportSong,
   formatStrumPattern,
@@ -39,9 +40,11 @@ import {
   locationsEqual,
   nextFilledChordMap,
   playTimeline,
+  slotBeats,
   slotMidiNotes,
   slotPlayback,
   slotStrumPattern,
+  STRUM_PATTERNS,
   type PlaybackStyle,
   type SequenceSlot,
   type SlotLocation,
@@ -62,10 +65,10 @@ import type { NotebookStyle } from '../state/notebook'
 const DRAG_MIME = 'application/x-chord-slot'
 const MEASURE_DRAG_MIME = 'application/x-chord-measure'
 const BPM_PRESETS = [60, 80, 90, 120, 160]
-const PLAYBACK_OPTIONS: { id: PlaybackStyle; label: string; hint: string }[] = [
-  { id: 'strum', label: 'Strum', hint: 'All notes together' },
-  { id: 'arp-up', label: 'Arp ↑', hint: 'Low to high' },
-  { id: 'arp-down', label: 'Arp ↓', hint: 'High to low' },
+const PLAYBACK_OPTIONS: { id: PlaybackStyle; label: string }[] = [
+  { id: 'strum', label: 'Strum' },
+  { id: 'arp-up', label: 'Arp ↑' },
+  { id: 'arp-down', label: 'Arp ↓' },
 ]
 
 interface Props {
@@ -83,10 +86,9 @@ interface Props {
   onPlaceIncoming: (location: SlotLocation, slot: SequenceSlot) => void
   onDuplicateSlot: (location: SlotLocation) => void
   onSetSlotNote: (location: SlotLocation, note: string) => void
-  onSetSlotFeel: (
-    location: SlotLocation,
-    patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>
-  ) => void
+  onSetSlotBeats: (location: SlotLocation, beats: number) => void
+  onSetSlotPlayback: (location: SlotLocation, playback: PlaybackStyle) => void
+  onSetSlotStrumPattern: (location: SlotLocation, pattern: string | undefined) => void
   onSetLineAudio: (
     location: SlotLocation,
     audio: SequenceSlot['lineAudio'] | undefined
@@ -111,13 +113,13 @@ interface Props {
   ) => void
   onRemoveGroup: (sectionId: string, measureId: string) => void
   onAddSection: () => void
+  onDuplicateSection: (sectionId: string) => void
+  onSetSectionCollapsed: (sectionId: string, collapsed: boolean) => void
   onRenameSection: (sectionId: string, name: string) => void
   onSetSectionNote: (sectionId: string, note: string) => void
   onRemoveSection: (sectionId: string) => void
   onSetBpm: (bpm: number) => void
   onSetGroupSteps: (barId: string, steps: number) => void
-  onSetPlayback: (playback: PlaybackStyle) => void
-  onSetStrumPattern: (pattern: string | undefined) => void
   onClear: () => void
   selected: SlotLocation | null
   onSelectSlot: (location: SlotLocation | null) => void
@@ -148,7 +150,9 @@ export function SequencePanel({
   onPlaceIncoming,
   onDuplicateSlot,
   onSetSlotNote,
-  onSetSlotFeel,
+  onSetSlotBeats,
+  onSetSlotPlayback,
+  onSetSlotStrumPattern,
   onSetLineAudio,
   audioInputId,
   onAudioInputIdChange,
@@ -160,13 +164,13 @@ export function SequencePanel({
   onMoveGroup,
   onRemoveGroup,
   onAddSection,
+  onDuplicateSection,
+  onSetSectionCollapsed,
   onRenameSection,
   onSetSectionNote,
   onRemoveSection,
   onSetBpm,
   onSetGroupSteps,
-  onSetPlayback,
-  onSetStrumPattern,
   onClear,
   selected,
   onSelectSlot,
@@ -195,7 +199,6 @@ export function SequencePanel({
   } | null>(null)
   const [copied, setCopied] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
-  const [playbackOpen, setPlaybackOpen] = useState(false)
   const [recordingAt, setRecordingAt] = useState<SlotLocation | null>(null)
   const [recordError, setRecordError] = useState<string | null>(null)
   const recorderRef = useRef<LineRecorder | null>(null)
@@ -347,8 +350,8 @@ export function SequencePanel({
         remaining.map((event, offset) => ({
           midiNotes: midiByIndex[startIndex + offset],
           seconds: event.seconds,
-          style: slotPlayback(event.slot, song.playback),
-          strumPattern: slotStrumPattern(event.slot, song.strumPattern),
+          style: slotPlayback(event.slot),
+          strumPattern: slotStrumPattern(event.slot),
         })),
         {
           onBeat: (index) => {
@@ -507,7 +510,6 @@ export function SequencePanel({
                 aria-pressed
                 onClick={() => {
                   setManagerOpen(false)
-                  setPlaybackOpen(false)
                   onToggleNotebook?.()
                 }}
                 className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
@@ -576,22 +578,7 @@ export function SequencePanel({
                   Redo
                 </button>
               </div>
-              <button
-                type="button"
-                aria-expanded={playbackOpen}
-                aria-controls="playback-panel"
-                onClick={() => setPlaybackOpen((open) => !open)}
-                className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition ${
-                  playbackOpen
-                    ? 'border-nebula-500 text-white'
-                    : 'border-cosmos-700 text-cosmos-300 hover:border-nebula-500 hover:text-white'
-                }`}
-              >
-                <span>{playbackSummary(song)}</span>
-                <span aria-hidden className="text-[10px] text-cosmos-500">
-                  {playbackOpen ? '▴' : '▾'}
-                </span>
-              </button>
+              <TempoControl bpm={song.bpm} onChange={onSetBpm} />
               <button
                 type="button"
                 onClick={copy}
@@ -615,9 +602,8 @@ export function SequencePanel({
                   type="button"
                   aria-pressed={notebookMode}
                   onClick={() => {
-                    setManagerOpen(false)
-                    setPlaybackOpen(false)
-                    onToggleNotebook()
+                  setManagerOpen(false)
+                  onToggleNotebook()
                   }}
                   className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
                 >
@@ -628,118 +614,6 @@ export function SequencePanel({
           </>
         )}
       </header>
-
-      {!notebookMode && playbackOpen && (
-        <div
-          id="playback-panel"
-          className="shrink-0 border-b border-cosmos-700/70 px-5 py-3"
-        >
-          <div className="rounded-xl border border-cosmos-700/80 bg-cosmos-850/60 px-3 py-2.5">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
-                Playback
-              </p>
-              <button
-                type="button"
-                onClick={() => setPlaybackOpen(false)}
-                className="rounded-md px-2 py-0.5 text-xs text-cosmos-400 transition hover:text-white"
-              >
-                Hide
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div
-                className="flex h-8 items-center rounded-lg border border-cosmos-700 bg-cosmos-900 p-0.5"
-                role="group"
-                aria-label="Playback style"
-              >
-                {PLAYBACK_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    title={option.hint}
-                    aria-pressed={song.playback === option.id}
-                    onClick={() => onSetPlayback(option.id)}
-                    className={`h-7 rounded-md px-2.5 text-xs font-medium transition ${
-                      song.playback === option.id
-                        ? 'bg-nebula-600 text-white'
-                        : 'text-cosmos-300 hover:text-white'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              {song.playback === 'strum' && (
-                <label className="flex h-8 items-center gap-1.5 rounded-lg border border-cosmos-700 bg-cosmos-900 px-2">
-                  <span className="text-[10px] font-semibold tracking-[0.12em] text-cosmos-400 uppercase">
-                    Pattern
-                  </span>
-                  <select
-                    value={song.strumPattern ?? DEFAULT_STRUM_PATTERN}
-                    onChange={(event) => {
-                      const next = event.target.value
-                      onSetStrumPattern(
-                        next === DEFAULT_STRUM_PATTERN ? undefined : next
-                      )
-                    }}
-                    aria-label="Strum pattern"
-                    className="h-7 bg-transparent text-xs text-white outline-none"
-                  >
-                    {STRUM_PATTERNS.map((pattern) => (
-                      <option key={pattern.id} value={pattern.id}>
-                        {pattern.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <div className="flex h-8 min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-cosmos-700 bg-cosmos-900 px-2.5">
-                <label className="shrink-0 text-[10px] font-semibold tracking-[0.12em] text-cosmos-400 uppercase">
-                  Tempo
-                </label>
-                <input
-                  type="range"
-                  min={MIN_BPM}
-                  max={MAX_BPM}
-                  value={song.bpm}
-                  onChange={(e) => onSetBpm(Number(e.target.value))}
-                  aria-label="Tempo"
-                  className="min-w-[72px] flex-1 accent-nebula-500"
-                />
-                <input
-                  type="number"
-                  min={MIN_BPM}
-                  max={MAX_BPM}
-                  value={song.bpm}
-                  onChange={(e) => {
-                    const next = Number(e.target.value)
-                    if (Number.isFinite(next)) onSetBpm(next)
-                  }}
-                  aria-label="BPM"
-                  className="h-6 w-12 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
-                />
-                <div className="hidden items-center sm:flex">
-                  {BPM_PRESETS.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => onSetBpm(preset)}
-                      className={`h-6 rounded px-1.5 text-[11px] tabular-nums transition ${
-                        song.bpm === preset
-                          ? 'text-white'
-                          : 'text-cosmos-500 hover:text-white'
-                      }`}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <SongManager
         key={managerOpen ? 'open' : 'closed'}
@@ -784,9 +658,9 @@ export function SequencePanel({
               const notes = midiByIndex[eventIndex]
               if (!notes) return
               playBeat(notes, {
-                style: slotPlayback(slot, song.playback),
+                style: slotPlayback(slot),
                 seconds: timeline[eventIndex]?.seconds ?? 1.2,
-                strumPattern: slotStrumPattern(slot, song.strumPattern),
+                strumPattern: slotStrumPattern(slot),
               })
             }}
             onPlayFromSection={playFromSection}
@@ -804,6 +678,25 @@ export function SequencePanel({
           <div key={section.id}>
             <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSetSectionCollapsed(section.id, !section.collapsed)
+                    }
+                    aria-expanded={!section.collapsed}
+                    aria-label={
+                      section.collapsed
+                        ? `Expand section ${section.name}`
+                        : `Collapse section ${section.name}`
+                    }
+                    title={section.collapsed ? 'Expand section' : 'Collapse section'}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-nebula-400/80 bg-nebula-600/30 px-2.5 py-1 text-xs font-semibold tracking-wide text-white shadow-[0_0_0_1px_rgba(79,108,255,0.25)] transition hover:border-nebula-300 hover:bg-nebula-500/50"
+                  >
+                    <span aria-hidden className="text-sm leading-none">
+                      {section.collapsed ? '▸' : '▾'}
+                    </span>
+                    {section.collapsed ? 'Expand' : 'Collapse'}
+                  </button>
                   <span className="text-[11px] font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
                     Section
                   </span>
@@ -832,6 +725,21 @@ export function SequencePanel({
                   aria-label={`${section.name} notes`}
                   className="min-w-[180px] flex-1 rounded-lg border border-cosmos-700/70 bg-transparent px-2 py-1 text-xs text-cosmos-300 outline-none placeholder:text-cosmos-600 focus:border-nebula-500"
                 />
+                {section.collapsed && (
+                  <span className="text-[11px] text-cosmos-500">
+                    {section.bars.length}{' '}
+                    {section.bars.length === 1 ? 'group' : 'groups'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onDuplicateSection(section.id)}
+                  aria-label={`Copy section ${section.name}`}
+                  title={`Copy section ${section.name}`}
+                  className="rounded-lg px-2 py-1 text-xs text-cosmos-400 transition hover:text-white"
+                >
+                  ⧉
+                </button>
                 {song.sections.length > 1 && (
                   <button
                     type="button"
@@ -843,13 +751,8 @@ export function SequencePanel({
                 )}
               </div>
 
-            <div
-              className={
-                false && section.bars.length > 1
-                  ? 'grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3'
-                  : 'grid grid-cols-1 gap-3 min-[760px]:grid-cols-2 min-[1180px]:grid-cols-3'
-              }
-            >
+            {!section.collapsed && (
+            <div className="flex flex-wrap items-stretch gap-3">
               {section.bars.map((bar, barIndex) => {
                 const steps = barSteps(bar)
                 const showMeasureLabel =
@@ -871,6 +774,7 @@ export function SequencePanel({
                 const shareRow = false && section.bars.length > 1
                 const measureOverflowsRow =
                   shareRow && visibleSlots.length > 4
+                const groupBasis = groupRowBasis(steps)
                 return (
                 <div
                   key={bar.id}
@@ -911,10 +815,14 @@ export function SequencePanel({
                     setDragMeasureFrom(null)
                     setDropMeasureTarget(null)
                   }}
+                  style={{
+                    flex: `1 1 ${groupBasis}`,
+                    minWidth: `min(100%, ${groupBasis})`,
+                  }}
                   className={
                     false
                       ? `min-w-0 ${measureOverflowsRow ? 'col-span-full' : ''}`
-                      : `min-w-0 select-none rounded-xl border bg-cosmos-900/60 p-2.5 transition ${
+                      : `max-w-full select-none rounded-xl border bg-cosmos-900/60 p-2.5 transition ${
                           dragMeasureFrom?.barId === bar.id
                             ? 'border-cosmos-600 opacity-45'
                             : dropMeasureTarget?.beforeBarId === bar.id
@@ -999,8 +907,15 @@ export function SequencePanel({
                         ? shareRow && !measureOverflowsRow
                           ? 'justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),14rem))]'
                           : 'justify-start gap-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),22rem))]'
-                        : `gap-2 ${stepGridClass(steps)}`
+                        : 'gap-2'
                     }`}
+                    style={
+                      false
+                        ? undefined
+                        : {
+                            gridTemplateColumns: `repeat(auto-fit, minmax(${SEQUENCER_SLOT_MIN}, 1fr))`,
+                          }
+                    }
                   >
                     {visibleSlots.map(({ slot, slotIndex }) => {
                       const location: SlotLocation = {
@@ -1041,8 +956,6 @@ export function SequencePanel({
                           steps={false ? Math.max(1, gridSteps) : steps}
                           presenting={false}
                           measureDragging={Boolean(dragMeasureFrom)}
-                          songPlayback={song.playback}
-                          songPattern={song.strumPattern}
                           isPlaying={isPlaying}
                           isSelected={!false && isSelected}
                           isDrop={!false && isDrop}
@@ -1056,18 +969,21 @@ export function SequencePanel({
                             const notes = midiByIndex[eventIndex]
                             if (!notes) return
                             playBeat(notes, {
-                              style: slotPlayback(slot, song.playback),
+                              style: slotPlayback(slot),
                               seconds: timeline[eventIndex]?.seconds ?? 1.2,
-                              strumPattern: slotStrumPattern(
-                                slot,
-                                song.strumPattern
-                              ),
+                              strumPattern: slotStrumPattern(slot),
                             })
                           }}
                           onRemove={() => onRemoveSlot(location)}
                           onDuplicate={() => onDuplicateSlot(location)}
                           onNoteChange={(note) => onSetSlotNote(location, note)}
-                          onFeelChange={(patch) => onSetSlotFeel(location, patch)}
+                          onBeatsChange={(beats) => onSetSlotBeats(location, beats)}
+                          onPlaybackChange={(playback) =>
+                            onSetSlotPlayback(location, playback)
+                          }
+                          onStrumPatternChange={(pattern) =>
+                            onSetSlotStrumPattern(location, pattern)
+                          }
                           recording={
                             recordingAt !== null &&
                             locationsEqual(recordingAt, location)
@@ -1150,7 +1066,7 @@ export function SequencePanel({
                     dropMeasureOn({ sectionId: section.id, beforeBarId: null })
                   }}
                   aria-label={`Add group ${section.bars.length + 1}`}
-                  className={`flex min-h-[240px] min-w-0 flex-col items-center justify-center rounded-xl border border-dashed bg-cosmos-900/30 text-cosmos-400 transition ${
+                  className={`flex min-h-[240px] min-w-[min(100%,10rem)] flex-[1_1_12rem] flex-col items-center justify-center rounded-xl border border-dashed bg-cosmos-900/30 text-cosmos-400 transition ${
                     dropMeasureTarget?.sectionId === section.id &&
                     dropMeasureTarget.beforeBarId === null
                       ? 'border-nebula-400 bg-nebula-500/10 text-white'
@@ -1164,6 +1080,7 @@ export function SequencePanel({
                 </button>
               )}
             </div>
+            )}
           </div>
           )
         })}
@@ -1204,8 +1121,6 @@ interface SlotCellProps {
   steps: number
   presenting: boolean
   measureDragging?: boolean
-  songPlayback: PlaybackStyle
-  songPattern?: string
   isPlaying: boolean
   isSelected: boolean
   isDrop: boolean
@@ -1216,7 +1131,9 @@ interface SlotCellProps {
   onRemove: () => void
   onDuplicate: () => void
   onNoteChange: (note: string) => void
-  onFeelChange: (patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => void
+  onBeatsChange: (beats: number) => void
+  onPlaybackChange: (playback: PlaybackStyle) => void
+  onStrumPatternChange: (pattern: string | undefined) => void
   recording?: boolean
   recordError?: string | null
   audioInputId: string
@@ -1246,8 +1163,6 @@ function SlotCell({
   steps,
   presenting,
   measureDragging = false,
-  songPlayback,
-  songPattern,
   isPlaying,
   isSelected,
   isDrop,
@@ -1258,7 +1173,9 @@ function SlotCell({
   onRemove,
   onDuplicate,
   onNoteChange,
-  onFeelChange,
+  onBeatsChange,
+  onPlaybackChange,
+  onStrumPatternChange,
   recording = false,
   recordError = null,
   audioInputId,
@@ -1373,7 +1290,7 @@ function SlotCell({
       onDragEnd={onDragEnd}
       onClick={onSelect}
       className={`flex ${presenting ? '' : slotMinHeight(steps)} flex-col rounded-xl border transition ${
-        presenting ? 'p-4' : 'p-2'
+        presenting ? 'p-4' : 'min-w-[14rem] p-2'
       } ${
         isPlaying
           ? 'border-star-400 bg-star-400/15'
@@ -1477,23 +1394,25 @@ function SlotCell({
               </p>
               <p className="mt-0.5 truncate text-sm text-nebula-400">
                 {slotVoicingLabel(slot)}
-                {!isLine && slot.playback
-                  ? ` · ${playbackLabel(slot.playback)}`
-                  : ''}
-                {!isLine &&
-                slotPlayback(slot, songPlayback) === 'strum' &&
-                slot.strumPattern
-                  ? ` · ${formatStrumPattern(slot.strumPattern)}`
-                  : ''}
+                {slotPlayback(slot) !== 'strum'
+                  ? ` · ${playbackLabel(slotPlayback(slot))}`
+                  : slotStrumPattern(slot) !== DEFAULT_STRUM_PATTERN
+                    ? ` · ${formatStrumPattern(slotStrumPattern(slot))}`
+                    : ''}
+                {` · ${slotBeats(slot)} beat${slotBeats(slot) === 1 ? '' : 's'}`}
                 {slot.note.trim() ? ` · ${slot.note}` : ''}
               </p>
             </div>
           ) : (
             <>
               <div className="mt-2 flex items-start justify-between gap-2">
-                <div className="pointer-events-none min-w-0">
-                  <p className="text-sm leading-tight font-bold text-white [overflow-wrap:anywhere]">
-                    <ChordNameText parts={chordParts} fallback={chordName} />
+                <div className="pointer-events-none min-w-min">
+                  <p className="text-sm leading-tight font-bold whitespace-nowrap text-white">
+                    <ChordNameText
+                      parts={chordParts}
+                      fallback={chordName}
+                      nowrap
+                    />
                   </p>
                   <p className="mt-0.5 truncate text-xs text-nebula-300">
                     {slotVoicingLabel(slot)}
@@ -1550,12 +1469,12 @@ function SlotCell({
                 </div>
               </div>
               {!isLine && (
-                <SlotFeelControls
+                <SlotPlayControls
                   slot={slot}
                   fingering={fingering}
-                  songPlayback={songPlayback}
-                  songPattern={songPattern}
-                  onChange={onFeelChange}
+                  onBeatsChange={onBeatsChange}
+                  onPlaybackChange={onPlaybackChange}
+                  onStrumPatternChange={onStrumPatternChange}
                   onOctaveShift={onOctaveShift}
                   onDragEnter={allowDrop}
                   onDragOver={allowDrop}
@@ -1563,7 +1482,22 @@ function SlotCell({
                 />
               )}
               {isLine && (
-                <LineTakeControls
+                <>
+                  <div
+                    className="mt-2"
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onDragEnter={allowDrop}
+                    onDragOver={allowDrop}
+                    onDrop={handleDrop}
+                  >
+                    <SlotBeatsControl
+                      beats={slotBeats(slot)}
+                      chordName={chordName}
+                      onChange={onBeatsChange}
+                    />
+                  </div>
+                  <LineTakeControls
                   recording={recording}
                   hasClip={Boolean(slot.lineAudio)}
                   error={recordError}
@@ -1574,6 +1508,7 @@ function SlotCell({
                   onPlayClip={onPlayClip}
                   onClearClip={onClearClip}
                 />
+                </>
               )}
               <input
                 value={slot.note}
@@ -1632,33 +1567,78 @@ function undoRedoAction(event: KeyboardEvent): 'undo' | 'redo' | null {
   return null
 }
 
-function playbackLabel(playback: PlaybackStyle): string {
-  return PLAYBACK_OPTIONS.find((option) => option.id === playback)?.label ?? 'Strum'
-}
-
-function playbackSummary(song: Song): string {
-  const style = playbackLabel(song.playback)
-  const pattern =
-    song.playback === 'strum' &&
-    song.strumPattern &&
-    song.strumPattern !== DEFAULT_STRUM_PATTERN
-      ? ` ${formatStrumPattern(song.strumPattern)}`
-      : ''
-  return `${style}${pattern} · ${song.bpm}`
-}
-
 const slotSelectClass =
   'h-7 min-w-0 flex-1 rounded-md border border-cosmos-700 bg-cosmos-900 px-1.5 text-xs text-cosmos-100 outline-none focus:border-nebula-500'
 
 const slotIconClass =
   'flex h-7 w-7 items-center justify-center rounded-md text-sm text-cosmos-400 transition hover:bg-cosmos-700 hover:text-white'
 
-function SlotFeelControls({
+function TempoControl({
+  bpm,
+  onChange,
+}: {
+  bpm: number
+  onChange: (bpm: number) => void
+}) {
+  return (
+    <div className="flex h-8 min-w-[168px] flex-1 items-center gap-2 rounded-lg border border-cosmos-700 bg-cosmos-900 px-2.5 sm:min-w-[220px]">
+      <label className="shrink-0 text-[10px] font-semibold tracking-[0.12em] text-cosmos-400 uppercase">
+        Tempo
+      </label>
+      <input
+        type="range"
+        min={MIN_BPM}
+        max={MAX_BPM}
+        value={bpm}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Tempo"
+        className="min-w-[64px] flex-1 accent-nebula-500"
+      />
+      <input
+        type="number"
+        min={MIN_BPM}
+        max={MAX_BPM}
+        value={bpm}
+        onChange={(e) => {
+          const next = Number(e.target.value)
+          if (Number.isFinite(next)) onChange(next)
+        }}
+        aria-label="BPM"
+        className="h-6 w-12 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
+      />
+      <div className="hidden items-center sm:flex">
+        {BPM_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => onChange(preset)}
+            className={`h-6 rounded px-1.5 text-[11px] tabular-nums transition ${
+              bpm === preset ? 'text-white' : 'text-cosmos-500 hover:text-white'
+            }`}
+          >
+            {preset}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type SlotDragHandler = (event: {
+  preventDefault: () => void
+  dataTransfer: DataTransfer
+}) => void
+
+function playbackLabel(playback: PlaybackStyle): string {
+  return PLAYBACK_OPTIONS.find((option) => option.id === playback)?.label ?? 'Strum'
+}
+
+function SlotPlayControls({
   slot,
   fingering,
-  songPlayback,
-  songPattern,
-  onChange,
+  onBeatsChange,
+  onPlaybackChange,
+  onStrumPatternChange,
   onOctaveShift,
   onDragEnter,
   onDragOver,
@@ -1666,25 +1646,19 @@ function SlotFeelControls({
 }: {
   slot: SequenceSlot
   fingering: Fingering | null
-  songPlayback: PlaybackStyle
-  songPattern?: string
-  onChange: (patch: Pick<SequenceSlot, 'playback' | 'strumPattern'>) => void
+  onBeatsChange: (beats: number) => void
+  onPlaybackChange: (playback: PlaybackStyle) => void
+  onStrumPatternChange: (pattern: string | undefined) => void
   onOctaveShift: (deltaFrets: number) => void
-  onDragEnter: (event: {
-    preventDefault: () => void
-    dataTransfer: DataTransfer
-  }) => void
-  onDragOver: (event: {
-    preventDefault: () => void
-    dataTransfer: DataTransfer
-  }) => void
+  onDragEnter: SlotDragHandler
+  onDragOver: SlotDragHandler
   onDrop: (event: {
     preventDefault: () => void
     stopPropagation: () => void
     dataTransfer: DataTransfer
   }) => void
 }) {
-  const style = slotPlayback(slot, songPlayback)
+  const feel = slotPlayback(slot)
   return (
     <div
       className="mt-2 space-y-1.5"
@@ -1694,7 +1668,7 @@ function SlotFeelControls({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <div className="flex gap-1.5">
+      <div className="flex items-center gap-1.5">
         {fingering && (
           <OctaveSelect
             fingering={fingering}
@@ -1704,17 +1678,13 @@ function SlotFeelControls({
           />
         )}
         <select
-          value={slot.playback ?? ''}
-          aria-label={`Playback for ${displayChordSymbol(slot.chordSymbol)}`}
-          onChange={(event) => {
-            const value = event.target.value
-            onChange({
-              playback: value === '' ? undefined : (value as PlaybackStyle),
-            })
-          }}
+          value={feel}
+          aria-label={`Feel for ${displayChordSymbol(slot.chordSymbol)}`}
+          onChange={(event) =>
+            onPlaybackChange(event.target.value as PlaybackStyle)
+          }
           className={slotSelectClass}
         >
-          <option value="">Song</option>
           {PLAYBACK_OPTIONS.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
@@ -1722,21 +1692,18 @@ function SlotFeelControls({
           ))}
         </select>
       </div>
-      {style === 'strum' && (
+      {feel === 'strum' && (
         <select
-          value={slot.strumPattern ?? ''}
+          value={slotStrumPattern(slot)}
           aria-label={`Strum pattern for ${displayChordSymbol(slot.chordSymbol)}`}
           onChange={(event) => {
             const value = event.target.value
-            onChange({
-              strumPattern: value === '' ? undefined : value,
-            })
+            onStrumPatternChange(
+              value === DEFAULT_STRUM_PATTERN ? undefined : value
+            )
           }}
           className={`${slotSelectClass} w-full flex-none`}
         >
-          <option value="">
-            Song · {formatStrumPattern(songPattern ?? DEFAULT_STRUM_PATTERN)}
-          </option>
           {STRUM_PATTERNS.map((pattern) => (
             <option key={pattern.id} value={pattern.id} title={pattern.hint}>
               {pattern.label}
@@ -1744,6 +1711,63 @@ function SlotFeelControls({
           ))}
         </select>
       )}
+      <SlotBeatsControl
+        beats={slotBeats(slot)}
+        chordName={displayChordSymbol(slot.chordSymbol)}
+        onChange={onBeatsChange}
+      />
+    </div>
+  )
+}
+
+function SlotBeatsControl({
+  beats,
+  chordName,
+  onChange,
+}: {
+  beats: number
+  chordName: string
+  onChange: (beats: number) => void
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <label className="shrink-0 text-[10px] font-semibold tracking-[0.12em] text-cosmos-500 uppercase">
+        Beats
+      </label>
+      <button
+        type="button"
+        aria-label={`Fewer beats for ${chordName}`}
+        disabled={beats <= MIN_SLOT_BEATS}
+        onClick={() => onChange(beats - 1)}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
+      >
+        −
+      </button>
+      <input
+        key={beats}
+        type="number"
+        min={MIN_SLOT_BEATS}
+        max={MAX_SLOT_BEATS}
+        defaultValue={beats}
+        aria-label={`Beats for ${chordName}`}
+        onBlur={(event) => {
+          const next = Number(event.target.value)
+          if (Number.isFinite(next)) onChange(next)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+        }}
+        className="h-6 w-8 rounded-md border border-cosmos-700 bg-cosmos-900 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
+      />
+      <button
+        type="button"
+        aria-label={`More beats for ${chordName}`}
+        disabled={beats >= MAX_SLOT_BEATS}
+        onClick={() => onChange(beats + 1)}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
+      >
+        +
+      </button>
     </div>
   )
 }
@@ -1859,10 +1883,12 @@ function MeasureStepsControl({
   )
 }
 
-function stepGridClass(steps: number): string {
-  if (steps <= 1) return 'grid-cols-1'
-  if (steps <= 8) return 'grid-cols-2'
-  return 'grid-cols-2 sm:grid-cols-4'
+const SEQUENCER_SLOT_MIN = '14rem'
+
+function groupRowBasis(steps: number): string {
+  const gaps = Math.max(steps - 1, 0) * 0.5
+  const pad = 1.25
+  return `calc(${steps} * ${SEQUENCER_SLOT_MIN} + ${gaps + pad}rem)`
 }
 
 function slotMinHeight(_steps: number): string {
@@ -1889,15 +1915,17 @@ function splitChordDisplay(input: string): { root: string; suffix: string } {
 function ChordNameText({
   parts,
   fallback,
+  nowrap = false,
 }: {
   parts: { root: string; suffix: string } | null
   fallback: string
+  nowrap?: boolean
 }) {
   if (!parts?.suffix) return fallback
   return (
     <>
       {parts.root}
-      <wbr />
+      {nowrap ? null : <wbr />}
       {parts.suffix}
     </>
   )

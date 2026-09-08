@@ -204,7 +204,9 @@ export default function App() {
             }}
             onDuplicateSlot={songs.duplicateSlot}
             onSetSlotNote={songs.setSlotNote}
-            onSetSlotFeel={songs.setSlotFeel}
+            onSetSlotBeats={songs.setSlotBeats}
+            onSetSlotPlayback={songs.setSlotPlayback}
+            onSetSlotStrumPattern={songs.setSlotStrumPattern}
             onSetLineAudio={songs.setLineAudio}
             audioInputId={audioInputId}
             onAudioInputIdChange={(deviceId) => {
@@ -219,13 +221,13 @@ export default function App() {
             onMoveGroup={songs.moveBar}
             onRemoveGroup={songs.removeBar}
             onAddSection={songs.addSection}
+            onDuplicateSection={songs.duplicateSection}
+            onSetSectionCollapsed={songs.setSectionCollapsed}
             onRenameSection={songs.renameSection}
             onSetSectionNote={songs.setSectionNote}
             onRemoveSection={songs.removeSection}
             onSetBpm={songs.setBpm}
             onSetGroupSteps={songs.setMeasureSteps}
-            onSetPlayback={songs.setPlayback}
-            onSetStrumPattern={songs.setStrumPattern}
             onClear={songs.clearEntries}
             canUndo={songs.canUndo}
             canRedo={songs.canRedo}
