@@ -12,6 +12,7 @@ import { locationExists, nextChordForWorkshop, type SlotLocation } from './state
 import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
+import type { ProgressionStep } from './theory/diatonic'
 import { generateAllTriads, generateTriadGroup, TRIAD_GROUPS_BY_ID } from './theory/triads'
 import { V_GROUPS_BY_ID } from './theory/vsystem'
 import { generateAllGroups, generateGroup, type Voicing } from './theory/voicings'
@@ -39,6 +40,12 @@ export default function App() {
   const [selectedSlot, setSelectedSlot] = useState<SlotLocation | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [workshopOpen, setWorkshopOpen] = useState(true)
+  const [pendingProgression, setPendingProgression] = useState<{
+    location: SlotLocation
+    stepId: string
+    roman: string
+    symbol: string
+  } | null>(null)
   const [showSplash, setShowSplash] = useState(true)
   const rootRef = useRef<HTMLDivElement>(null)
   const usedBrowserFullscreen = useRef(false)
@@ -51,6 +58,11 @@ export default function App() {
       setSelectedSlot(null)
     }
   }, [songs.activeSong, selectedSlot])
+
+  useEffect(() => {
+    if (!pendingProgression) return
+    if (input !== pendingProgression.symbol) setPendingProgression(null)
+  }, [input, pendingProgression])
 
   const toggleNotebook = useCallback(() => {
     setNotebookMode((open) => {
@@ -157,10 +169,43 @@ export default function App() {
       : null
 
   const handleAdd = (voicing: Voicing) => {
-    const placed = songs.addVoicing(voicing, selectedSlot)
+    const placed = songs.addVoicing(voicing, selectedSlot, {
+      roman: romanForPlacement(selectedSlot, voicing.chordSymbol),
+    })
     if (placed) setSelectedSlot(placed.nextSelection)
+    setPendingProgression(null)
     setJustAdded(voicing.id)
     window.setTimeout(() => setJustAdded(null), 1400)
+  }
+
+  const romanForPlacement = (
+    location: SlotLocation | null,
+    chordSymbol: string
+  ): string | undefined => {
+    if (!pendingProgression || !location) return undefined
+    if (pendingProgression.symbol !== chordSymbol) return undefined
+    if (location.barId !== pendingProgression.location.barId) return undefined
+    return pendingProgression.roman
+  }
+
+  const handlePickProgressionStep = (
+    location: SlotLocation | null,
+    step: ProgressionStep
+  ) => {
+    setInput(step.symbol)
+    setWorkshopTab('vsystem')
+    setWorkshopOpen(true)
+    if (location) {
+      setSelectedSlot(location)
+      setPendingProgression({
+        location,
+        stepId: step.id,
+        roman: step.roman,
+        symbol: step.symbol,
+      })
+    } else {
+      setPendingProgression(null)
+    }
   }
 
   return (
@@ -198,7 +243,12 @@ export default function App() {
             onRemoveSlot={songs.removeSlot}
             onMoveSlot={songs.relocateSlot}
             onPlaceIncoming={(location, slot) => {
-              songs.placeIncoming(location, slot)
+              const roman = romanForPlacement(location, slot.chordSymbol)
+              songs.placeIncoming(
+                location,
+                roman ? { ...slot, roman } : slot
+              )
+              if (roman) setPendingProgression(null)
               setJustAdded(slot.chordSymbol)
               window.setTimeout(() => setJustAdded(null), 1400)
             }}
@@ -223,11 +273,15 @@ export default function App() {
             onAddSection={songs.addSection}
             onDuplicateSection={songs.duplicateSection}
             onSetSectionCollapsed={songs.setSectionCollapsed}
+            onSetBarCollapsed={songs.setBarCollapsed}
             onRenameSection={songs.renameSection}
             onSetSectionNote={songs.setSectionNote}
             onRemoveSection={songs.removeSection}
             onSetBpm={songs.setBpm}
             onSetGroupSteps={songs.setMeasureSteps}
+            onSetBarHarmony={songs.setBarHarmony}
+            onPickProgressionStep={handlePickProgressionStep}
+            pendingProgression={pendingProgression}
             onClear={songs.clearEntries}
             canUndo={songs.canUndo}
             canRedo={songs.canRedo}
@@ -253,7 +307,9 @@ export default function App() {
                     Voicing workshop
                   </p>
                   <p className="mt-0.5 text-[11px] text-cosmos-500">
-                    {workshopTab === 'config'
+                    {pendingProgression && workshopTab === 'vsystem'
+                      ? `Pick a V-System grip for ${pendingProgression.roman} · ${pendingProgression.symbol}`
+                      : workshopTab === 'config'
                       ? 'Toggle helpers for the workshop and sequence'
                       : workshopTab === 'build'
                       ? 'Build a chord shape or outline a single-note line'

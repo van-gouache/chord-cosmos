@@ -2,6 +2,13 @@ import type { RefCallback } from 'react'
 
 import { ChordDiagram } from './ChordDiagram'
 import { displayChordSymbol } from '../theory/chords'
+import {
+  DEFAULT_MODE,
+  MODE_OPTIONS,
+  romanBadge,
+  romanForChord,
+  type ModeId,
+} from '../theory/diatonic'
 import { inversionOrdinal } from '../theory/voicings'
 import { isLineGroupId } from '../theory/lineOutline'
 import {
@@ -97,30 +104,49 @@ export function NotebookView({
                 </button>
               )}
             </div>
-            <div className="notebook-box-row">
-              {section.bars.flatMap((bar) =>
-                bar.slots.flatMap((slot, slotIndex) =>
-                  slot
-                    ? [
-                        <NotebookEntry
-                          key={`${bar.id}-${slotIndex}`}
-                          slot={slot}
-                          location={{
-                            sectionId: section.id,
-                            barId: bar.id,
-                            slotIndex,
-                          }}
-                          selected={selected}
-                          playingLocation={playingLocation}
-                          playingCellRef={playingCellRef}
-                          onSelect={onSelect}
-                          onPreview={onPreview}
-                        />,
-                      ]
-                    : []
-                )
-              )}
-            </div>
+            {section.bars.map((bar, barIndex) => {
+              const filled = bar.slots.flatMap((slot, slotIndex) =>
+                slot
+                  ? [
+                      <NotebookEntry
+                        key={`${bar.id}-${slotIndex}`}
+                        slot={slot}
+                        keyRoot={bar.keyRoot}
+                        mode={bar.mode}
+                        location={{
+                          sectionId: section.id,
+                          barId: bar.id,
+                          slotIndex,
+                        }}
+                        selected={selected}
+                        playingLocation={playingLocation}
+                        playingCellRef={playingCellRef}
+                        onSelect={onSelect}
+                        onPreview={onPreview}
+                      />,
+                    ]
+                  : []
+              )
+              if (filled.length === 0) return null
+              return (
+                <div key={bar.id} className="notebook-group">
+                  <div className="notebook-group-head">
+                    <span className="notebook-group-label">
+                      Group {barIndex + 1}
+                    </span>
+                    {bar.keyRoot ? (
+                      <span className="notebook-group-key">
+                        {bar.keyRoot}{' '}
+                        {MODE_OPTIONS.find(
+                          (option) => option.id === (bar.mode ?? DEFAULT_MODE)
+                        )?.label ?? 'Ionian'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="notebook-box-row">{filled}</div>
+                </div>
+              )
+            })}
           </section>
         )
       })}
@@ -130,6 +156,8 @@ export function NotebookView({
 
 function NotebookEntry({
   slot,
+  keyRoot,
+  mode,
   location,
   selected,
   playingLocation,
@@ -138,6 +166,8 @@ function NotebookEntry({
   onPreview,
 }: {
   slot: SequenceSlot
+  keyRoot?: string
+  mode?: ModeId
   location: SlotLocation
   selected: SlotLocation | null
   playingLocation: SlotLocation | null
@@ -150,6 +180,9 @@ function NotebookEntry({
   const isSelected =
     selected !== null && locationsEqual(selected, location)
   const hydrated = hydrateSlot(slot)
+  const romanLabel = isLineGroupId(slot.groupId)
+    ? undefined
+    : romanForChord(slot.chordSymbol, keyRoot, mode ?? DEFAULT_MODE)
 
   return (
     <button
@@ -165,11 +198,18 @@ function NotebookEntry({
         onSelect(location)
       }}
     >
-      <span className="notebook-symbol">
-        {isLineGroupId(slot.groupId)
-          ? 'Line'
-          : displayChordSymbol(slot.chordSymbol)}
-      </span>
+      <div className="notebook-chord-head">
+        {romanLabel ? (
+          <span className="notebook-roman" title={romanLabel}>
+            {romanBadge(romanLabel)}
+          </span>
+        ) : null}
+        <span className="notebook-symbol">
+          {isLineGroupId(slot.groupId)
+            ? 'Line'
+            : displayChordSymbol(slot.chordSymbol)}
+        </span>
+      </div>
       {hydrated.fingering && hydrated.shape && (
         <ChordDiagram
           fingering={hydrated.fingering}

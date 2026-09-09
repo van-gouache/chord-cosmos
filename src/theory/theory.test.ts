@@ -133,6 +133,21 @@ describe('chord symbol parsing', () => {
     expect(displayChordSymbol('Bbmaj7')).toBe('B♭Δ7')
   })
 
+  it('names a rootless GΔ7♯11 that still has a 5', () => {
+    const chord = parseChord('G[3,b5,5,7]')
+    expect(chord.symbol).toBe('GΔ7♯11(add5)-R')
+    expect(chord.tones.map((tone) => tone.degree).sort()).toEqual(
+      ['3', '5', '7', '♭5'].sort()
+    )
+    expect(chord.tones.some((tone) => tone.semitones === 0)).toBe(false)
+    const again = parseChord(chord.symbol)
+    expect(again.symbol).toBe('GΔ7♯11(add5)-R')
+    expect(new Set(again.tones.map((tone) => tone.semitones))).toEqual(
+      new Set(chord.tones.map((tone) => tone.semitones))
+    )
+    expect(parseChord('C[3,5,b7,9]').symbol).toBe('C9(add5)-R')
+  })
+
   it('canonicalizes typed symbols to jazz shorthand', () => {
     expect(parseChord('Em7').symbol).toBe('E-7')
     expect(parseChord('Emaj7').symbol).toBe('EΔ7')

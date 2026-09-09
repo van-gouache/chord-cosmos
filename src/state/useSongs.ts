@@ -11,6 +11,7 @@ import {
 } from './history'
 
 import type { Voicing } from '../theory/voicings'
+import type { KeyCenter, ModeId } from '../theory/diatonic'
 import {
   MAX_BPM,
   MIN_BPM,
@@ -19,6 +20,7 @@ import {
   duplicateBar,
   duplicateSection,
   setSectionCollapsed,
+  setBarCollapsed,
   moveBar,
   cloneSong,
   countSlots,
@@ -41,6 +43,7 @@ import {
   readImportedSongs,
   saveState,
   setBarSteps,
+  setBarHarmony,
   slotFromVoicing,
   slotFromLineNotes,
   type SequenceSlot,
@@ -153,7 +156,8 @@ export function useSongs() {
   const addVoicing = useCallback(
     (
       voicing: Voicing,
-      preferred?: SlotLocation | null
+      preferred?: SlotLocation | null,
+      extras?: { roman?: string }
     ): { location: SlotLocation; nextSelection: SlotLocation } | null => {
       const current =
         songsRef.current.find((song) => song.id === activeSongId) ??
@@ -167,7 +171,7 @@ export function useSongs() {
         const next = placeSlot(
           prepared.song,
           prepared.location,
-          slotFromVoicing(voicing)
+          slotFromVoicing(voicing, '', extras)
         )
         placed = {
           location: prepared.location,
@@ -377,6 +381,14 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const setBarCollapsedBy = useCallback(
+    (barId: string, collapsed: boolean) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) => setBarCollapsed(song, barId, collapsed))
+    },
+    [activeSong, updateSong]
+  )
+
   const addBar = useCallback(
     (sectionId: string) => {
       if (!activeSong) return
@@ -386,7 +398,13 @@ export function useSongs() {
           section.id === sectionId
             ? {
                 ...section,
-                bars: [...section.bars, emptyBar(lastBarSteps(song, sectionId))],
+                bars: [
+                  ...section.bars,
+                  emptyBar(1, {
+                    keyRoot: section.bars[section.bars.length - 1]?.keyRoot,
+                    mode: section.bars[section.bars.length - 1]?.mode,
+                  }),
+                ],
               }
             : section
         ),
@@ -490,6 +508,17 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const setBarHarmonyBy = useCallback(
+    (
+      barId: string,
+      harmony: { keyRoot: KeyCenter; mode?: ModeId }
+    ) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) => setBarHarmony(song, barId, harmony))
+    },
+    [activeSong, updateSong]
+  )
+
   const renameSong = useCallback(
     (songId: string, name: string) => {
       updateSong(songId, (song) => ({ ...song, name }), { coalesce: true })
@@ -578,11 +607,13 @@ export function useSongs() {
     addSection,
     duplicateSection: duplicateSectionBy,
     setSectionCollapsed: setSectionCollapsedBy,
+    setBarCollapsed: setBarCollapsedBy,
     renameSection,
     setSectionNote,
     removeSection,
     setBpm,
     setMeasureSteps,
+    setBarHarmony: setBarHarmonyBy,
     renameSong,
     newSong,
     duplicateSong,

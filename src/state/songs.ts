@@ -40,6 +40,13 @@ import {
 } from '../theory/triads'
 import { buildShape, V_GROUPS_BY_ID, type VoicingShape } from '../theory/vsystem'
 import { generateGroup, voicingMatchingTab, type Voicing } from '../theory/voicings'
+import {
+  DEFAULT_MODE,
+  isKeyCenter,
+  isModeId,
+  type KeyCenter,
+  type ModeId,
+} from '../theory/diatonic'
 
 export const STORAGE_KEY = 'chord-cosmos.songs.v2'
 export const LEGACY_STORAGE_KEY = 'chord-cosmos.songs.v1'
@@ -91,6 +98,8 @@ export interface SequenceSlot {
   strumPattern?: string
   /** Extra outline markers on empty string/fret cells of the diagram. */
   highlightedNotes?: HighlightedNote[]
+  /** Roman numeral from the progression builder when this chord was placed. */
+  roman?: string
   /** Ordered frets of a single-note line (`groupId` is Line). */
   lineNotes?: HighlightedNote[]
   /** Extra fret rows toward the nut, beyond the automatic box. */
@@ -111,6 +120,11 @@ export interface HighlightedNote {
 export interface Bar {
   id: string
   slots: (SequenceSlot | null)[]
+  /** Tonic of this group's progression builder. */
+  keyRoot?: KeyCenter
+  /** Mode of this group's progression builder. */
+  mode?: ModeId
+  collapsed?: boolean
 }
 
 export interface Section {
@@ -180,10 +194,15 @@ export function lastBarSteps(song: Song, sectionId?: string): number {
   return last ? barSteps(last) : DEFAULT_STEPS_PER_MEASURE
 }
 
-export function emptyBar(steps: number = DEFAULT_STEPS_PER_MEASURE): Bar {
+export function emptyBar(
+  steps: number = DEFAULT_STEPS_PER_MEASURE,
+  harmony?: { keyRoot?: KeyCenter; mode?: ModeId }
+): Bar {
   return {
     id: newId(),
     slots: Array.from({ length: clampSteps(steps) }, () => null),
+    keyRoot: harmony?.keyRoot,
+    mode: harmony?.mode,
   }
 }
 
@@ -283,7 +302,12 @@ export function setBarSteps(song: Song, barId: string, steps: number): Song {
   })
 }
 
-export function slotFromVoicing(voicing: Voicing, note = ''): SequenceSlot {
+export function slotFromVoicing(
+  voicing: Voicing,
+  note = '',
+  extras?: { roman?: string }
+): SequenceSlot {
+  const roman = extras?.roman?.trim()
   return {
     id: newId(),
     chordSymbol: voicing.chordSymbol,
@@ -291,6 +315,7 @@ export function slotFromVoicing(voicing: Voicing, note = ''): SequenceSlot {
     inversion: voicing.inversion,
     tab: tabLabel(voicing.fingering),
     note,
+    ...(roman ? { roman } : {}),
   }
 }
 
@@ -351,6 +376,7 @@ export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
       playback: isPlayback(value.playback) ? value.playback : undefined,
       lineNotes,
       lineAudio,
+      roman: readRoman(value.roman),
     }
   } catch {
     return null
@@ -372,6 +398,9 @@ export function cloneBar(bar: Bar): Bar {
   return {
     id: newId(),
     slots: bar.slots.map((slot) => (slot ? cloneSlot(slot) : null)),
+    keyRoot: bar.keyRoot,
+    mode: bar.mode,
+    collapsed: bar.collapsed,
   }
 }
 
@@ -414,6 +443,17 @@ export function setSectionCollapsed(
         : section
     ),
   }
+}
+
+export function setBarCollapsed(
+  song: Song,
+  barId: string,
+  collapsed: boolean
+): Song {
+  return mapBar(song, barId, (bar) => ({
+    ...bar,
+    collapsed: collapsed || undefined,
+  }))
 }
 
 function copiedSectionName(name: string, existing: string[]): string {
@@ -491,7 +531,9 @@ export function duplicateBar(
       const index = section.bars.findIndex((item) => item.id === barId)
       if (index < 0) return section
       const bars = [...section.bars]
-      bars.splice(index + 1, 0, cloneBar(section.bars[index]))
+      const copy = cloneBar(section.bars[index])
+      copy.collapsed = undefined
+      bars.splice(index + 1, 0, copy)
       return { ...section, bars }
     }),
   }
@@ -602,6 +644,19 @@ export function firstEmptyLocation(song: Song): SlotLocation | null {
     }
   }
   return null
+}
+
+export function firstEmptyInBar(
+  song: Song,
+  sectionId: string,
+  barId: string
+): SlotLocation | null {
+  const section = song.sections.find((item) => item.id === sectionId)
+  const bar = section?.bars.find((item) => item.id === barId)
+  if (!bar) return null
+  const slotIndex = bar.slots.findIndex((slot) => slot === null)
+  if (slotIndex < 0) return null
+  return { sectionId, barId, slotIndex }
 }
 
 export function locationExists(song: Song, location: SlotLocation): boolean {
@@ -925,7 +980,11 @@ export function appendBarIfNeeded(song: Song): { song: Song; location: SlotLocat
     }
   }
 
-  const bar = emptyBar(lastBarSteps(song))
+  const lastBar = lastSection.bars[lastSection.bars.length - 1]
+  const bar = emptyBar(1, {
+    keyRoot: lastBar?.keyRoot,
+    mode: lastBar?.mode,
+  })
   const sections = song.sections.map((section) =>
     section.id === lastSection.id
       ? { ...section, bars: [...section.bars, bar] }
@@ -953,6 +1012,18 @@ function mapBar(song: Song, barId: string, change: (bar: Bar) => Bar): Song {
       bars: section.bars.map((bar) => (bar.id === barId ? change(bar) : bar)),
     })),
   }
+}
+
+export function setBarHarmony(
+  song: Song,
+  barId: string,
+  harmony: { keyRoot: KeyCenter; mode?: ModeId }
+): Song {
+  return mapBar(song, barId, (bar) => ({
+    ...bar,
+    keyRoot: harmony.keyRoot,
+    mode: harmony.mode ?? bar.mode ?? DEFAULT_MODE,
+  }))
 }
 
 export function packEntriesIntoSection(
@@ -1017,7 +1088,14 @@ function readSlot(value: unknown): SequenceSlot | null {
     lineAudio: readLineAudio(s.lineAudio),
     extendLow: readExtraCount(s.extendLow),
     extendHigh: readExtraCount(s.extendHigh),
+    roman: readRoman(s.roman),
   }
+}
+
+function readRoman(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const roman = value.trim()
+  return roman || undefined
 }
 
 function readExtraCount(value: unknown): number | undefined {
@@ -1100,6 +1178,9 @@ function normalizeBar(value: unknown, fallbackSteps: number): Bar | null {
   return {
     id: typeof raw.id === 'string' ? raw.id : newId(),
     slots: resizeBarSlots(slots, steps),
+    keyRoot: isKeyCenter(raw.keyRoot) ? raw.keyRoot : undefined,
+    mode: isModeId(raw.mode) ? raw.mode : undefined,
+    collapsed: raw.collapsed === true ? true : undefined,
   }
 }
 

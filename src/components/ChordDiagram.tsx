@@ -213,6 +213,7 @@ export function ChordDiagram({
 
   const renderDot = (
     stringIndex: number,
+    fret: number,
     cx: number,
     cy: number,
     radius: number,
@@ -249,7 +250,7 @@ export function ChordDiagram({
       />
     )
 
-    return <g key={`dot-${stringIndex}`}>{mark}</g>
+    return <g key={`dot-${stringIndex}-${fret}`}>{mark}</g>
   }
 
   const renderOutline = (stringIndex: number, fret: number) => {
@@ -403,7 +404,7 @@ export function ChordDiagram({
         }
         if (fret === 0) {
           const r = showDegrees ? s.dot * 0.9 : s.markerFont * 0.42
-          return renderDot(i, x(i), markerY, r, s.font * 0.92)
+          return renderDot(i, 0, x(i), markerY, r, s.font * 0.92)
         }
         return null
       })}
@@ -436,6 +437,7 @@ export function ChordDiagram({
           .map((note) =>
             renderDot(
               note.string,
+              note.fret,
               x(note.string),
               y(note.fret),
               s.dot,

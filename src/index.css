@@ -227,11 +227,40 @@ body::after {
   color: var(--nb-ink);
 }
 
+.notebook-group + .notebook-group {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed color-mix(in srgb, var(--nb-ink) 28%, transparent);
+}
+
+.notebook-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.notebook-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nb-muted);
+}
+
+.notebook-group-key {
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--nb-ink);
+}
+
 .notebook-box-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.65rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
 }
 
 @media (min-width: 720px) {
@@ -241,6 +270,7 @@ body::after {
 }
 
 .notebook-chord {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -265,13 +295,37 @@ body::after {
   box-shadow: inset 0 -2px 0 var(--nb-play);
 }
 
-.notebook-symbol {
+.notebook-chord-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
   margin-bottom: 0.15rem;
-  font-size: 1.05rem;
+  min-height: 1.7rem;
+  padding: 0 0.05rem;
+}
+
+.notebook-symbol {
+  width: 100%;
+  font-size: 0.92rem;
   font-weight: 700;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.notebook-roman {
+  max-width: 100%;
+  margin-bottom: 0.12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: left;
+  color: var(--nb-muted);
 }
 
 .notebook-voicing,

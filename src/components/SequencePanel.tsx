@@ -36,6 +36,7 @@ import {
   exportSong,
   formatStrumPattern,
   hydrateSlot,
+  firstEmptyInBar,
   locationKey,
   locationsEqual,
   nextFilledChordMap,
@@ -49,9 +50,13 @@ import {
   type SequenceSlot,
   type SlotLocation,
   type Song,
+  type Bar,
 } from '../state/songs'
 import { incomingVoicingFrom, isVoicingDrag } from './voicingDrag'
+import { ProgressionBuilder } from './ProgressionBuilder'
 import { OctaveSelect } from './OctaveShiftButtons'
+import type { KeyCenter, ModeId, ProgressionStep } from '../theory/diatonic'
+import { DEFAULT_MODE, romanBadge, romanForChord } from '../theory/diatonic'
 import type { Fingering } from '../theory/fretboard'
 import type { VoicingShape } from '../theory/vsystem'
 import { inversionOrdinal } from '../theory/voicings'
@@ -115,11 +120,26 @@ interface Props {
   onAddSection: () => void
   onDuplicateSection: (sectionId: string) => void
   onSetSectionCollapsed: (sectionId: string, collapsed: boolean) => void
+  onSetBarCollapsed: (barId: string, collapsed: boolean) => void
   onRenameSection: (sectionId: string, name: string) => void
   onSetSectionNote: (sectionId: string, note: string) => void
   onRemoveSection: (sectionId: string) => void
   onSetBpm: (bpm: number) => void
   onSetGroupSteps: (barId: string, steps: number) => void
+  onSetBarHarmony: (
+    barId: string,
+    harmony: { keyRoot: KeyCenter; mode?: ModeId }
+  ) => void
+  onPickProgressionStep: (
+    location: SlotLocation | null,
+    step: ProgressionStep
+  ) => void
+  pendingProgression?: {
+    location: SlotLocation
+    stepId: string
+    roman: string
+    symbol: string
+  } | null
   onClear: () => void
   selected: SlotLocation | null
   onSelectSlot: (location: SlotLocation | null) => void
@@ -166,11 +186,15 @@ export function SequencePanel({
   onAddSection,
   onDuplicateSection,
   onSetSectionCollapsed,
+  onSetBarCollapsed,
   onRenameSection,
   onSetSectionNote,
   onRemoveSection,
   onSetBpm,
   onSetGroupSteps,
+  onSetBarHarmony,
+  onPickProgressionStep,
+  pendingProgression = null,
   onClear,
   selected,
   onSelectSlot,
@@ -841,6 +865,31 @@ export function SequencePanel({
                     >
                       {showMeasureLabel && (
                         <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSetBarCollapsed(bar.id, !bar.collapsed)
+                            }}
+                            aria-expanded={!bar.collapsed}
+                            aria-label={
+                              bar.collapsed
+                                ? `Expand group ${barIndex + 1}`
+                                : `Collapse group ${barIndex + 1}`
+                            }
+                            title={
+                              bar.collapsed
+                                ? `Expand group ${barIndex + 1}`
+                                : `Collapse group ${barIndex + 1}`
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-nebula-400/80 bg-nebula-600/30 px-2.5 py-1 text-xs font-semibold tracking-wide text-white shadow-[0_0_0_1px_rgba(79,108,255,0.25)] transition hover:border-nebula-300 hover:bg-nebula-500/50"
+                          >
+                            <span aria-hidden className="text-sm leading-none">
+                              {bar.collapsed ? '▸' : '▾'}
+                            </span>
+                            {bar.collapsed ? 'Expand' : 'Collapse'}
+                          </button>
                           {!false && (
                             <span
                               aria-hidden
@@ -901,6 +950,41 @@ export function SequencePanel({
                       )}
                     </div>
                   )}
+                  {bar.collapsed && (
+                    <p className="truncate px-0.5 text-[11px] text-cosmos-500">
+                      {groupChordSummary(bar)}
+                    </p>
+                  )}
+                  {!bar.collapsed && (
+                    <>
+                    <ProgressionBuilder
+                      keyRoot={bar.keyRoot}
+                      mode={bar.mode}
+                      selectedId={
+                        pendingProgression?.location.barId === bar.id
+                          ? pendingProgression.stepId
+                          : null
+                      }
+                      onHarmonyChange={(harmony) =>
+                        onSetBarHarmony(bar.id, harmony)
+                      }
+                      onPickStep={(step) => {
+                        if (!song) return
+                        const inThisBar =
+                          selected?.barId === bar.id &&
+                          selected.sectionId === section.id
+                        const selectedEmpty =
+                          inThisBar &&
+                          selected &&
+                          bar.slots[selected.slotIndex] === null
+                            ? selected
+                            : null
+                        const target =
+                          selectedEmpty ??
+                          firstEmptyInBar(song, section.id, bar.id)
+                        onPickProgressionStep(target, step)
+                      }}
+                    />
                   <div
                     className={`grid ${
                       false
@@ -1031,10 +1115,20 @@ export function SequencePanel({
                             }
                             dropOn(location)
                           }}
+                          keyRoot={bar.keyRoot}
+                          mode={bar.mode}
+                          pendingLabel={
+                            pendingProgression &&
+                            locationsEqual(pendingProgression.location, location)
+                              ? pendingProgression.roman
+                              : null
+                          }
                         />
                       )
                     })}
                   </div>
+                    </>
+                  )}
                 </div>
                 )
               })}
@@ -1149,6 +1243,9 @@ interface SlotCellProps {
   onDragEnd: () => void
   onDragOver: () => void
   onDrop: (event: { dataTransfer: DataTransfer }) => void
+  pendingLabel?: string | null
+  keyRoot?: KeyCenter
+  mode?: ModeId
 }
 
 function SlotCell({
@@ -1191,6 +1288,9 @@ function SlotCell({
   onDragEnd,
   onDragOver,
   onDrop,
+  pendingLabel = null,
+  keyRoot,
+  mode,
 }: SlotCellProps) {
   const allowDrop = (event: { preventDefault: () => void; dataTransfer: DataTransfer }) => {
     if (presenting) return
@@ -1255,6 +1355,10 @@ function SlotCell({
     showLickOutline && !isLine && fingering && currentChord
       ? lickOutlineNotes(fingering, currentChord)
       : []
+  const romanLabel =
+    slot && !isLine
+      ? romanForChord(slot.chordSymbol, keyRoot, mode ?? DEFAULT_MODE)
+      : undefined
 
   return (
     <div
@@ -1289,7 +1393,7 @@ function SlotCell({
       onDrop={handleDrop}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`flex ${presenting ? '' : slotMinHeight(steps)} flex-col rounded-xl border transition ${
+      className={`relative flex ${presenting ? '' : slotMinHeight(steps)} flex-col rounded-xl border transition ${
         presenting ? 'p-4' : 'min-w-[14rem] p-2'
       } ${
         isPlaying
@@ -1317,6 +1421,14 @@ function SlotCell({
     >
       {slot ? (
         <>
+          {romanLabel ? (
+            <span
+              title={romanLabel}
+              className="pointer-events-none absolute top-1.5 left-2 z-10 max-w-[46%] truncate text-[11px] font-semibold tracking-wide text-nebula-300"
+            >
+              {romanBadge(romanLabel)}
+            </span>
+          ) : null}
           <div
             className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 flex-col items-center justify-center text-cosmos-200`}
           >
@@ -1342,7 +1454,7 @@ function SlotCell({
                   }
                   extendLow={slot.extendLow}
                   extendHigh={slot.extendHigh}
-                  onToggleNote={onToggleHighlight}
+                  onToggleNote={presenting ? undefined : onToggleHighlight}
                   className={
                     presenting
                       ? 'h-auto w-full'
@@ -1526,7 +1638,13 @@ function SlotCell({
         </>
       ) : (
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-xs text-cosmos-600">{presenting ? '·' : 'empty'}</p>
+          <p
+            className={`text-xs ${
+              pendingLabel ? 'font-semibold text-nebula-300' : 'text-cosmos-600'
+            }`}
+          >
+            {presenting ? '·' : pendingLabel ? pendingLabel : 'empty'}
+          </p>
         </div>
       )}
     </div>
@@ -2011,6 +2129,16 @@ function slotVoicingLabel(slot: SequenceSlot): string {
     return `Line · ${n} note${n === 1 ? '' : 's'}`
   }
   return `${slot.groupId} · ${shortInversion(slot.inversion)}`
+}
+
+function groupChordSummary(bar: Bar): string {
+  const names = bar.slots.flatMap((slot) => {
+    if (!slot) return []
+    if (isLineGroupId(slot.groupId)) return ['Line']
+    return [displayChordSymbol(slot.chordSymbol)]
+  })
+  if (names.length === 0) return 'Empty group'
+  return names.join(' · ')
 }
 
 function shortInversion(inversion: number): string {

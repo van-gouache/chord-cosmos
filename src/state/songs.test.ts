@@ -10,6 +10,7 @@ import {
   duplicateBar,
   duplicateSection,
   setSectionCollapsed,
+  setBarCollapsed,
   moveBar,
   cloneSong,
   countSlots,
@@ -18,9 +19,11 @@ import {
   songForJsonExport,
   exportSong,
   firstEmptyLocation,
+  firstEmptyInBar,
   nextEmptyAfter,
   resolveAddLocation,
   loadState,
+  normalizeSong,
   locationKey,
   locationsEqual,
   formatStrumPattern,
@@ -42,6 +45,7 @@ import {
   slotFromLineNotes,
   slotMidiNotes,
   setBarSteps,
+  setBarHarmony,
   slotBeats,
   stepSeconds,
   type SequenceSlot,
@@ -83,6 +87,48 @@ describe('song grid helpers', () => {
     expect(song.sections[0].bars[0].slots).toHaveLength(BEATS_PER_BAR)
     expect(song.sections[0].bars[0].slots.every((s) => s === null)).toBe(true)
     expect(countSlots(song)).toBe(0)
+  })
+
+  it('stores a group key center and finds the first empty step in that group', () => {
+    const song = createSong('Demo')
+    const bar = song.sections[0].bars[0]
+    const next = setBarHarmony(song, bar.id, { keyRoot: 'Bb', mode: 'ionian' })
+    expect(next.sections[0].bars[0].keyRoot).toBe('Bb')
+    expect(next.sections[0].bars[0].mode).toBe('ionian')
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(next)))
+    expect(roundTrip.sections[0].bars[0].keyRoot).toBe('Bb')
+    expect(firstEmptyInBar(next, song.sections[0].id, bar.id)?.slotIndex).toBe(0)
+  })
+
+  it('persists a progression roman numeral on a chord slot', () => {
+    const song = createSong('Demo')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(song, location, {
+      id: 'slot-1',
+      chordSymbol: 'D-7',
+      groupId: 'V-2',
+      inversion: 0,
+      tab: 'x-5-7-5-6-x',
+      note: '',
+      roman: 'II-7',
+    })
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(placed)))
+    expect(roundTrip?.sections[0].bars[0].slots[0]?.roman).toBe('II-7')
+    expect(
+      slotFromVoicingPayload(
+        JSON.stringify({
+          chordSymbol: 'D-7',
+          groupId: 'V-2',
+          inversion: 0,
+          tab: 'x-5-7-5-6-x',
+          roman: 'II-7',
+        })
+      )?.roman
+    ).toBe('II-7')
   })
 
   it('rebuilds a slot from a dragged voicing payload', () => {
@@ -317,6 +363,7 @@ describe('song grid helpers', () => {
 
     const prepared = appendBarIfNeeded(full)
     expect(prepared.song.sections[0].bars).toHaveLength(2)
+    expect(prepared.song.sections[0].bars[1].slots).toHaveLength(1)
     expect(prepared.location.slotIndex).toBe(0)
     expect(prepared.location.barId).toBe(prepared.song.sections[0].bars[1].id)
   })
@@ -497,6 +544,18 @@ describe('song grid helpers', () => {
     expect(opened.sections[0].collapsed).toBeUndefined()
 
     expect(duplicateSection(song, 'nope').sections).toHaveLength(1)
+  })
+
+  it('collapses a group and persists that on reload', () => {
+    const song = createSong('Demo')
+    const bar = song.sections[0].bars[0]
+    const collapsed = setBarCollapsed(song, bar.id, true)
+    expect(collapsed.sections[0].bars[0].collapsed).toBe(true)
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(collapsed)))
+    expect(roundTrip?.sections[0].bars[0].collapsed).toBe(true)
+    expect(setBarCollapsed(collapsed, bar.id, false).sections[0].bars[0].collapsed).toBeUndefined()
+    const copy = duplicateBar(collapsed, song.sections[0].id, bar.id)
+    expect(copy.sections[0].bars[1].collapsed).toBeUndefined()
   })
 
   it('swaps two measures in the same section', () => {

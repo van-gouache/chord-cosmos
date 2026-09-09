@@ -12,6 +12,7 @@
 
 import {
   isKnownJazzSuffix,
+  jazzDescribeSet,
   jazzQualityLabel,
   jazzSuffixFromSemitones,
 } from './qualities'
@@ -755,7 +756,8 @@ function parseCustomChord(
   })
 
   const spelledRoot = spellDegree(rootLetter, 'R', rootPc)
-  const suffix = jazzSuffixFromSemitones(specs.map((spec) => spec.semitones))
+  const described = jazzDescribeSet(specs.map((spec) => spec.semitones))
+  const suffix = described?.suffix ?? null
 
   return {
     input,
@@ -766,7 +768,7 @@ function parseCustomChord(
     rootName,
     rootPc,
     qualityLabel:
-      suffix !== null ? jazzQualityLabel(suffix) : 'custom four-note',
+      described?.label ?? (suffix !== null ? jazzQualityLabel(suffix) : 'custom four-note'),
     tones,
     allTones: tones,
     adjustments: [],
@@ -801,7 +803,8 @@ export function parseChord(input: string): ParsedChord {
     return parseCustomChord(trimmed, rootName, parsedRoot.letter, parsedRoot.pc, afterRoot)
   }
 
-  const { quality, rest } = parseQuality(afterRoot)
+  const decorated = /^(.*)\(add([^)]+)\)-R$/.exec(afterRoot)
+  const { quality, rest } = parseQuality(decorated ? decorated[1] : afterRoot)
   const { tones: withMods, suffix: modSuffix } = applyModifiers(
     quality.tones,
     rest
@@ -809,10 +812,21 @@ export function parseChord(input: string): ParsedChord {
 
   const adjustments: string[] = []
   const root: ToneSpec = { semitones: 0, degree: 'R', role: 'root' }
+  const addedTones: ToneSpec[] = []
+  if (decorated) {
+    for (const token of decorated[2].split(',')) {
+      const spec = parseDegreeToken(token)
+      if (!spec) {
+        throw new ChordParseError(`Unknown added interval "${token}"`)
+      }
+      addedTones.push(spec)
+    }
+  }
 
   // Collapse duplicate semitones, keeping the more specific label.
   const bySemitone = new Map<number, ToneSpec>()
-  for (const tone of [root, ...withMods]) {
+  const seed = decorated ? [] : [root]
+  for (const tone of [...seed, ...withMods, ...addedTones]) {
     const existing = bySemitone.get(tone.semitones)
     if (!existing || ROLE_PRIORITY[tone.role] > ROLE_PRIORITY[existing.role]) {
       bySemitone.set(tone.semitones, tone)
@@ -859,22 +873,29 @@ export function parseChord(input: string): ParsedChord {
   }
 
   const spelledRoot = spellDegree(parsedRoot.letter, 'R', parsedRoot.pc)
+  const described = jazzDescribeSet(
+    writtenSpecs.map((spec) => spec.semitones)
+  )
   const composed = `${quality.suffix}${modSuffix}`
   const jazzSuffix =
     jazzSuffixFromSemitones(writtenSpecs.map((spec) => spec.semitones)) ??
     jazzSuffixFromSemitones(specs.map((spec) => spec.semitones))
-  const suffix = isKnownJazzSuffix(composed)
-    ? composed
-    : (jazzSuffix ?? composed)
+  const suffix = decorated
+    ? (described?.suffix ?? `${composed}(add${decorated[2]})-R`)
+    : isKnownJazzSuffix(composed)
+      ? composed
+      : (jazzSuffix ?? composed)
 
   return {
     input: trimmed,
     symbol: `${spelledRoot}${suffix}`,
     rootName,
     rootPc: parsedRoot.pc,
-    qualityLabel: isKnownJazzSuffix(suffix)
-      ? jazzQualityLabel(suffix)
-      : quality.label,
+    qualityLabel: decorated
+      ? (described?.label ?? quality.label)
+      : isKnownJazzSuffix(suffix)
+        ? jazzQualityLabel(suffix)
+        : quality.label,
     tones: specs.map(toChordTone),
     allTones: allSpecs.map(toChordTone),
     adjustments,
