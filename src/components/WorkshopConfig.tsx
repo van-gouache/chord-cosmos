@@ -6,6 +6,8 @@ interface Props {
   onShowForwardTargetsChange: (value: boolean) => void
   showLickOutline: boolean
   onShowLickOutlineChange: (value: boolean) => void
+  showCircleOfFifths: boolean
+  onShowCircleOfFifthsChange: (value: boolean) => void
   notebookStyle: NotebookStyle
   onNotebookStyleChange: (style: NotebookStyle) => void
   audioInputId: string
@@ -17,6 +19,8 @@ export function WorkshopConfig({
   onShowForwardTargetsChange,
   showLickOutline,
   onShowLickOutlineChange,
+  showCircleOfFifths,
+  onShowCircleOfFifthsChange,
   notebookStyle,
   onNotebookStyleChange,
   audioInputId,
@@ -63,6 +67,24 @@ export function WorkshopConfig({
           <span className="mt-0.5 block text-[11px] leading-relaxed text-cosmos-400">
             A second chart of the chord’s tones near this grip. The main
             sequence diagrams stay unchanged.
+          </span>
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-cosmos-700/70 bg-cosmos-900/60 px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={showCircleOfFifths}
+          onChange={(event) => onShowCircleOfFifthsChange(event.target.checked)}
+          className="mt-0.5 accent-nebula-500"
+        />
+        <span>
+          <span className="block text-sm font-medium text-cosmos-100">
+            Circle of fifths
+          </span>
+          <span className="mt-0.5 block text-[11px] leading-relaxed text-cosmos-400">
+            Place the current chord on the usual circle, with C at the top.
+            The group key and chord are marked in place; clockwise is
+            sharper.
           </span>
         </span>
       </label>

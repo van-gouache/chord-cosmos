@@ -996,6 +996,10 @@ export function appendBarIfNeeded(song: Song): { song: Song; location: SlotLocat
   }
 }
 
+export function barAt(song: Song, barId: string): Bar | null {
+  return findBar(song, barId)
+}
+
 function findBar(song: Song, barId: string): Bar | null {
   for (const section of song.sections) {
     const bar = section.bars.find((b) => b.id === barId)

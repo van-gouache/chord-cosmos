@@ -15,6 +15,7 @@ import {
   type LineRecorder,
 } from '../audio/lineAudio'
 import { AudioInputSelect } from './AudioInputSelect'
+import { CircleOfFifths } from './CircleOfFifths'
 import {
   cellPc,
   nearestEmptyCell,
@@ -37,6 +38,7 @@ import {
   formatStrumPattern,
   hydrateSlot,
   firstEmptyInBar,
+  barAt,
   locationKey,
   locationsEqual,
   nextFilledChordMap,
@@ -149,6 +151,8 @@ interface Props {
   onRedo: () => void
   showForwardTargets?: boolean
   showLickOutline?: boolean
+  showCircleOfFifths?: boolean
+  onPlayingLocationChange?: (location: SlotLocation | null) => void
   notebookMode?: boolean
   notebookStyle?: NotebookStyle
   onToggleNotebook?: () => void
@@ -204,6 +208,8 @@ export function SequencePanel({
   onRedo,
   showForwardTargets = true,
   showLickOutline = false,
+  showCircleOfFifths = false,
+  onPlayingLocationChange,
   notebookMode = false,
   notebookStyle = 'cream',
   onToggleNotebook,
@@ -236,6 +242,13 @@ export function SequencePanel({
   }
 
   const timeline = useMemo(() => (song ? playTimeline(song) : []), [song])
+  const playingLocation =
+    playingIndex !== null ? (timeline[playingIndex]?.location ?? null) : null
+
+  useEffect(() => {
+    onPlayingLocationChange?.(playingLocation)
+  }, [onPlayingLocationChange, playingLocation])
+
   const nextByLocation = useMemo(
     () => (song ? nextFilledChordMap(song) : new Map<string, ParsedChord>()),
     [song]
@@ -491,9 +504,6 @@ export function SequencePanel({
     event.dataTransfer.effectAllowed = 'move'
     setDragMeasureFrom({ sectionId, barId })
   }
-
-  const playingLocation =
-    playingIndex !== null ? (timeline[playingIndex]?.location ?? null) : null
 
   useEffect(() => {
     if (!notebookMode || playingIndex === null) return
@@ -985,6 +995,22 @@ export function SequencePanel({
                         onPickProgressionStep(target, step)
                       }}
                     />
+                    {showCircleOfFifths && bar.keyRoot ? (
+                      <div className="mb-2 rounded-lg border border-cosmos-800/80 bg-cosmos-950/50 p-1.5">
+                        <CircleOfFifths
+                          keyRoot={bar.keyRoot}
+                          chordRootName={
+                            circleChordRoot(
+                              bar,
+                              selected,
+                              playingLocation,
+                              song,
+                            ) ??
+                            undefined
+                          }
+                        />
+                      </div>
+                    ) : null}
                   <div
                     className={`grid ${
                       false
@@ -2139,6 +2165,43 @@ function groupChordSummary(bar: Bar): string {
   })
   if (names.length === 0) return 'Empty group'
   return names.join(' · ')
+}
+
+function circleChordRoot(
+  bar: Bar,
+  selected: SlotLocation | null,
+  playing: SlotLocation | null,
+  song: Song | null,
+): string | null {
+  if (playing && song) {
+    const source = barAt(song, playing.barId)
+    const fromPlay = source
+      ? chordSlotAtOrBefore(source, playing.slotIndex)
+      : undefined
+    if (fromPlay) {
+      return (
+        tryParseChord(fromPlay.chordSymbol).chord?.rootName ??
+        fromPlay.chordSymbol
+      )
+    }
+  }
+  const fromSelected =
+    selected?.barId === bar.id
+      ? chordSlotAtOrBefore(bar, selected.slotIndex)
+      : undefined
+  const pick = fromSelected ?? bar.slots.find(
+    (slot) => slot && !isLineGroupId(slot.groupId),
+  )
+  if (!pick) return null
+  return tryParseChord(pick.chordSymbol).chord?.rootName ?? pick.chordSymbol
+}
+
+function chordSlotAtOrBefore(bar: Bar, slotIndex: number) {
+  for (let i = slotIndex; i >= 0; i--) {
+    const slot = bar.slots[i]
+    if (slot && !isLineGroupId(slot.groupId)) return slot
+  }
+  return undefined
 }
 
 function shortInversion(inversion: number): string {

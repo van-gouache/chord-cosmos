@@ -9,6 +9,7 @@ export const PREFS_KEY = 'chord-cosmos.prefs.v1'
 export interface AppPrefs {
   showForwardTargets: boolean
   showLickOutline: boolean
+  showCircleOfFifths: boolean
   notebookStyle: NotebookStyle
   audioInputId: string
 }
@@ -16,6 +17,7 @@ export interface AppPrefs {
 export const DEFAULT_PREFS: AppPrefs = {
   showForwardTargets: true,
   showLickOutline: false,
+  showCircleOfFifths: false,
   notebookStyle: DEFAULT_NOTEBOOK_STYLE,
   audioInputId: '',
 }
@@ -41,6 +43,10 @@ export function loadPrefs(): AppPrefs {
       typeof raw?.showLickOutline === 'boolean'
         ? raw.showLickOutline
         : DEFAULT_PREFS.showLickOutline,
+    showCircleOfFifths:
+      typeof raw?.showCircleOfFifths === 'boolean'
+        ? raw.showCircleOfFifths
+        : DEFAULT_PREFS.showCircleOfFifths,
     notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
     audioInputId: typeof raw?.audioInputId === 'string' ? raw.audioInputId : '',
   }

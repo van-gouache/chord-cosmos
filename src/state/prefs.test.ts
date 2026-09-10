@@ -32,10 +32,10 @@ describe('app prefs', () => {
     expect(loadPrefs().showForwardTargets).toBe(false)
   })
 
-  it('keeps lick-outline charts off until enabled', () => {
-    expect(loadPrefs().showLickOutline).toBe(false)
-    updatePrefs({ showLickOutline: true })
-    expect(loadPrefs().showLickOutline).toBe(true)
+  it('keeps the circle of fifths off until enabled', () => {
+    expect(loadPrefs().showCircleOfFifths).toBe(false)
+    updatePrefs({ showCircleOfFifths: true })
+    expect(loadPrefs().showCircleOfFifths).toBe(true)
   })
 
   it('remembers notebook page style', () => {

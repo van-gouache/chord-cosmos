@@ -8,10 +8,12 @@ import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
 import { unlockAudio } from './audio/player'
 import { WorkshopConfig } from './components/WorkshopConfig'
-import { locationExists, nextChordForWorkshop, type SlotLocation } from './state/songs'
+import { CircleOfFifths } from './components/CircleOfFifths'
+import { barAt, locationExists, nextChordForWorkshop, type SlotLocation } from './state/songs'
 import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
+import { isLineGroupId } from './theory/lineOutline'
 import type { ProgressionStep } from './theory/diatonic'
 import { generateAllTriads, generateTriadGroup, TRIAD_GROUPS_BY_ID } from './theory/triads'
 import { V_GROUPS_BY_ID } from './theory/vsystem'
@@ -28,6 +30,9 @@ export default function App() {
   const [showLickOutline, setShowLickOutline] = useState(
     () => loadPrefs().showLickOutline
   )
+  const [showCircleOfFifths, setShowCircleOfFifths] = useState(
+    () => loadPrefs().showCircleOfFifths
+  )
   const [notebookMode, setNotebookMode] = useState(false)
   const [notebookStyle, setNotebookStyle] = useState(
     () => loadPrefs().notebookStyle
@@ -38,6 +43,7 @@ export default function App() {
   const [qualityNonce, setQualityNonce] = useState(0)
   const [selectedVoicing, setSelectedVoicing] = useState<Voicing | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<SlotLocation | null>(null)
+  const [playingSlot, setPlayingSlot] = useState<SlotLocation | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [workshopOpen, setWorkshopOpen] = useState(true)
   const [pendingProgression, setPendingProgression] = useState<{
@@ -97,6 +103,37 @@ export default function App() {
   }, [])
 
   const { chord, error } = useMemo(() => tryParseChord(input), [input])
+  const workshopCircleKey = useMemo(() => {
+    const song = songs.activeSong
+    if (!song) return null
+    const playingBar = playingSlot ? barAt(song, playingSlot.barId) : null
+    if (playingBar?.keyRoot) return playingBar.keyRoot
+    const selectedBar = selectedSlot
+      ? barAt(song, selectedSlot.barId)
+      : null
+    if (selectedBar?.keyRoot) return selectedBar.keyRoot
+    for (const section of song.sections) {
+      for (const bar of section.bars) {
+        if (bar.keyRoot) return bar.keyRoot
+      }
+    }
+    return null
+  }, [playingSlot, songs.activeSong, selectedSlot])
+  const workshopCircleChordRoot = useMemo(() => {
+    const song = songs.activeSong
+    if (playingSlot && song) {
+      const bar = barAt(song, playingSlot.barId)
+      if (bar) {
+        for (let i = playingSlot.slotIndex; i >= 0; i--) {
+          const slot = bar.slots[i]
+          if (slot && !isLineGroupId(slot.groupId)) {
+            return tryParseChord(slot.chordSymbol).chord?.rootName ?? slot.chordSymbol
+          }
+        }
+      }
+    }
+    return chord?.rootName
+  }, [chord?.rootName, playingSlot, songs.activeSong])
   const workshopNextChord = useMemo(() => {
     if (!chord || !songs.activeSong) return null
     return nextChordForWorkshop(songs.activeSong, chord, selectedSlot)
@@ -289,6 +326,8 @@ export default function App() {
             onRedo={songs.redo}
             showForwardTargets={showForwardTargets}
             showLickOutline={showLickOutline}
+            showCircleOfFifths={showCircleOfFifths}
+            onPlayingLocationChange={setPlayingSlot}
             notebookStyle={notebookStyle}
             onToggleNotebook={toggleNotebook}
             onNotebookStyleChange={(style) => {
@@ -389,6 +428,11 @@ export default function App() {
                       setShowLickOutline(value)
                       updatePrefs({ showLickOutline: value })
                     }}
+                    showCircleOfFifths={showCircleOfFifths}
+                    onShowCircleOfFifthsChange={(value) => {
+                      setShowCircleOfFifths(value)
+                      updatePrefs({ showCircleOfFifths: value })
+                    }}
                     notebookStyle={notebookStyle}
                     onNotebookStyleChange={(style) => {
                       setNotebookStyle(style)
@@ -422,6 +466,21 @@ export default function App() {
                     mode={workshopTab === 'triads' ? 'triads' : 'vsystem'}
                     qualityNonce={qualityNonce}
                   />
+                  {showCircleOfFifths ? (
+                    <div className="mt-3 rounded-lg border border-cosmos-800/80 bg-cosmos-950/50 p-2">
+                      {workshopCircleKey ? (
+                        <CircleOfFifths
+                          keyRoot={workshopCircleKey}
+                          chordRootName={workshopCircleChordRoot}
+                        />
+                      ) : (
+                        <p className="text-center text-[11px] leading-snug text-cosmos-500">
+                          Set a group key on the sequence to place this chord
+                          on the circle of fifths.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
                 )}
 
