@@ -163,8 +163,9 @@ export function progressionFamilies(
   const take = (steps: ProgressionStep[]) => {
     const kept: ProgressionStep[] = []
     for (const step of steps) {
-      if (used.has(step.symbol)) continue
-      used.add(step.symbol)
+      const key = `${step.roman}|${step.symbol}`
+      if (used.has(key)) continue
+      used.add(key)
       kept.push(step)
     }
     return kept
@@ -179,6 +180,16 @@ export function progressionFamilies(
       steps: diatonic,
     },
   ]
+
+  const sixths = take(sixthSteps(parsed))
+  if (sixths.length > 0) {
+    families.push({
+      id: 'sixths',
+      heading: 'Sixths',
+      hint: 'Tonic and subdominant 6 chords, including minor iv6',
+      steps: sixths,
+    })
+  }
 
   const secondaryV = take(secondaryDominants(mode, parsed))
   if (secondaryV.length > 0) {
@@ -200,6 +211,16 @@ export function progressionFamilies(
     })
   }
 
+  const secondaryIio = take(secondaryHalfDims(mode, parsed))
+  if (secondaryIio.length > 0) {
+    families.push({
+      id: 'secondary-half-dim',
+      heading: 'Secondary IIø7',
+      hint: 'Half-dim ii of a minor target',
+      steps: secondaryIio,
+    })
+  }
+
   const tritones = take(tritoneSubs(mode, parsed))
   if (tritones.length > 0) {
     families.push({
@@ -215,7 +236,7 @@ export function progressionFamilies(
     families.push({
       id: 'chromatic',
       heading: 'Chromatic',
-      hint: 'bII, iv, bVI, bVII leftover after applied dominants',
+      hint: 'Scale-degree names, including aliases of applied chords',
       steps: chromatic,
     })
   }
@@ -295,34 +316,76 @@ function diatonicUsage(step: ProgressionStep): string {
 
 function chromaticUsage(step: ProgressionStep): string {
   const roman = step.roman
+  if (roman === 'I6') {
+    return `${step.symbol} — tonic sixth. Lighter than IΔ7; common as a jazz/country home chord.`
+  }
+  if (roman === 'I7') {
+    return `${step.symbol} — blues tonic dominant. Same chord as V7/IV.`
+  }
+  if (roman === 'II7') {
+    return `${step.symbol} — dominant on 2. Same chord as V7/V.`
+  }
+  if (roman.startsWith('bII6')) {
+    return `${step.symbol} — Neapolitan sixth (N6). Major color on bII, classically first inversion; usually to V or I.`
+  }
   if (roman.startsWith('bIIΔ') || roman.startsWith('bII^')) {
     return `${step.symbol} — Neapolitan-major color. Lush bII that can slide toward V or I.`
   }
   if (roman.startsWith('bII7')) {
-    return `${step.symbol} — bII7, often a tritone of V. Common as a direct approach to I.`
+    return `${step.symbol} — bII7, often a tritone of V. Same chord as subV7.`
   }
   if (roman.startsWith('bIII')) {
     return `${step.symbol} — chromatic mediant. Parallel-major color on III; cinematic root motion.`
   }
+  if (roman === 'III7') {
+    return `${step.symbol} — dominant on 3. Same chord as V7/VI.`
+  }
+  if (roman === 'IV6') {
+    return `${step.symbol} — subdominant sixth. Plagal color, lighter than IVΔ7.`
+  }
+  if (roman.startsWith('iv6')) {
+    return `${step.symbol} — borrowed minor iv6. Hymn-like plagal IV–I.`
+  }
   if (roman.startsWith('iv')) {
     return `${step.symbol} — borrowed minor iv. Plagal, hymn-like IV–I with a minor flavor.`
+  }
+  if (roman === 'IV7') {
+    return `${step.symbol} — mixolydian / blues IV7. Same chord as subV7/III.`
+  }
+  if (roman.startsWith('#iv')) {
+    return `${step.symbol} — #ivø7. Passing half-dim; same chord as IIø7/III.`
+  }
+  if (roman === 'VI7') {
+    return `${step.symbol} — dominant on 6. Same chord as V7/II.`
+  }
+  if (roman === 'VII7') {
+    return `${step.symbol} — dominant on 7. Same chord as V7/III.`
+  }
+  if (roman.startsWith('vii°')) {
+    return `${step.symbol} — leading-tone °7 from harmonic minor. Strong cadence into I.`
   }
   if (roman.startsWith('bVIIΔ') || roman.startsWith('bVII^')) {
     return `${step.symbol} — bVII major 7. Rock/modal mixture; often to I or as a IV of IV.`
   }
   if (roman.startsWith('bVII7')) {
-    return `${step.symbol} — backdoor dominant. bVII7–I instead of V7–I.`
+    return `${step.symbol} — backdoor dominant. bVII7–I; same chord as subV7/VI.`
   }
   if (roman.startsWith('bVIΔ') || roman.startsWith('bVI^')) {
     return `${step.symbol} — bVI major 7. Modal mixture; often a warm neighbor to V or I.`
   }
   if (roman.startsWith('bVI7')) {
-    return `${step.symbol} — bVI7. Mixolydian-flat-six / backdoor neighbor; can pull to V or I.`
+    return `${step.symbol} — bVI7. Mixolydian-flat-six; same chord as subV7/V.`
   }
   return `${step.symbol} — chromatic mixture from outside the mode.`
 }
 
 function passingDimUsage(step: ProgressionStep): string {
+  if (step.roman === 'I°7') {
+    return `${step.symbol} — common-tone °7 of I. Decorates the tonic without leaving its root.`
+  }
+  if (step.roman.startsWith('#V')) {
+    return `${step.symbol} — passing °7. Chromatic bass between V and VI.`
+  }
   if (step.roman.startsWith('#IV')) {
     return `${step.symbol} — passing °7. Chromatic bass between IV and V (vii°7 of V).`
   }
@@ -517,30 +580,101 @@ function chromaticSteps(parsed: {
   pc: number
   letter: string
 }): ProgressionStep[] {
+  return absoluteSteps(
+    parsed,
+    [
+      { roman: 'I7', letterOff: 0, semitones: 0, suffix: '7', degree: 1 },
+      { roman: 'II7', letterOff: 1, semitones: 2, suffix: '7', degree: 2 },
+      { roman: 'bII6', letterOff: 1, semitones: 1, suffix: '6', degree: 2 },
+      { roman: 'bIIΔ7', letterOff: 1, semitones: 1, suffix: 'Δ7', degree: 2 },
+      { roman: 'bII7', letterOff: 1, semitones: 1, suffix: '7', degree: 2 },
+      { roman: 'bIIIΔ7', letterOff: 2, semitones: 3, suffix: 'Δ7', degree: 3 },
+      { roman: 'bIII7', letterOff: 2, semitones: 3, suffix: '7', degree: 3 },
+      { roman: 'III7', letterOff: 2, semitones: 4, suffix: '7', degree: 3 },
+      { roman: 'iv-7', letterOff: 3, semitones: 5, suffix: '-7', degree: 4 },
+      { roman: 'IV7', letterOff: 3, semitones: 5, suffix: '7', degree: 4 },
+      { roman: '#ivø7', letterOff: 3, semitones: 6, suffix: 'ø7', degree: 4 },
+      { roman: 'VI7', letterOff: 5, semitones: 9, suffix: '7', degree: 6 },
+      { roman: 'bVIΔ7', letterOff: 5, semitones: 8, suffix: 'Δ7', degree: 6 },
+      { roman: 'bVI7', letterOff: 5, semitones: 8, suffix: '7', degree: 6 },
+      { roman: 'VII7', letterOff: 6, semitones: 11, suffix: '7', degree: 7 },
+      { roman: 'bVIIΔ7', letterOff: 6, semitones: 10, suffix: 'Δ7', degree: 7 },
+      { roman: 'bVII7', letterOff: 6, semitones: 10, suffix: '7', degree: 7 },
+      { roman: 'vii°7', letterOff: 6, semitones: 11, suffix: '°7', degree: 7 },
+    ],
+    'chromatic',
+    'chromatic'
+  )
+}
+
+function sixthSteps(parsed: {
+  pc: number
+  letter: string
+}): ProgressionStep[] {
+  return absoluteSteps(
+    parsed,
+    [
+      { roman: 'I6', letterOff: 0, semitones: 0, suffix: '6', degree: 1 },
+      { roman: 'IV6', letterOff: 3, semitones: 5, suffix: '6', degree: 4 },
+      { roman: 'iv6', letterOff: 3, semitones: 5, suffix: '-6', degree: 4 },
+    ],
+    'chromatic',
+    'sixth'
+  )
+}
+
+function absoluteSteps(
+  parsed: { pc: number; letter: string },
+  specs: readonly {
+    roman: string
+    letterOff: number
+    semitones: number
+    suffix: string
+    degree: number
+  }[],
+  kind: ProgressionStepKind,
+  idPrefix: string
+): ProgressionStep[] {
   const tonicIndex = letterIndex(parsed.letter)
   if (tonicIndex < 0) return []
-  const specs = [
-    { roman: 'bIIΔ7', letterOff: 1, semitones: 1, suffix: 'Δ7', degree: 2 },
-    { roman: 'bII7', letterOff: 1, semitones: 1, suffix: '7', degree: 2 },
-    { roman: 'bIIIΔ7', letterOff: 2, semitones: 3, suffix: 'Δ7', degree: 3 },
-    { roman: 'bIII7', letterOff: 2, semitones: 3, suffix: '7', degree: 3 },
-    { roman: 'iv-7', letterOff: 3, semitones: 5, suffix: '-7', degree: 4 },
-    { roman: 'bVIΔ7', letterOff: 5, semitones: 8, suffix: 'Δ7', degree: 6 },
-    { roman: 'bVI7', letterOff: 5, semitones: 8, suffix: '7', degree: 6 },
-    { roman: 'bVIIΔ7', letterOff: 6, semitones: 10, suffix: 'Δ7', degree: 7 },
-    { roman: 'bVII7', letterOff: 6, semitones: 10, suffix: '7', degree: 7 },
-  ] as const
   return specs.map((spec) => {
     const pc = mod12(parsed.pc + spec.semitones)
     const rootName = spellLetter((tonicIndex + spec.letterOff) % 7, pc)
     return step({
-      id: `chromatic-${spec.roman}`,
-      kind: 'chromatic',
+      id: `${idPrefix}-${spec.roman}`,
+      kind,
       degree: spec.degree,
       roman: spec.roman,
       symbol: `${rootName}${spec.suffix}`,
     })
   })
+}
+
+function secondaryHalfDims(
+  mode: ModeId,
+  parsed: { pc: number; letter: string }
+): ProgressionStep[] {
+  const tonicIndex = letterIndex(parsed.letter)
+  if (tonicIndex < 0) return []
+  const scalePcs = MODE_INTERVALS[mode].map((step) =>
+    mod12(parsed.pc + step)
+  )
+  const steps: ProgressionStep[] = []
+  for (const degree of [2, 5]) {
+    const targetPc = scalePcs[degree]
+    const iiPc = mod12(targetPc + 2)
+    const rootName = spellLetter((tonicIndex + degree + 1) % 7, iiPc)
+    steps.push(
+      step({
+        id: `sec-iio-${degree + 1}`,
+        kind: 'secondary-ii',
+        degree: degree + 1,
+        roman: `IIø7/${ROMAN[degree]}`,
+        symbol: `${rootName}ø7`,
+      })
+    )
+  }
+  return steps
 }
 
 function modalRoman(interval: number, suffix: string): string {
@@ -598,6 +732,7 @@ function passingDiminished(parsed: {
   const tonicIndex = letterIndex(parsed.letter)
   if (tonicIndex < 0) return []
   const specs = [
+    { id: 'tonic', roman: 'I°7', letter: tonicIndex, pc: parsed.pc },
     { id: 'sharp-1', roman: '#I°7', letter: tonicIndex, pc: mod12(parsed.pc + 1) },
     {
       id: 'sharp-2',
@@ -610,6 +745,12 @@ function passingDiminished(parsed: {
       roman: '#IV°7',
       letter: (tonicIndex + 3) % 7,
       pc: mod12(parsed.pc + 6),
+    },
+    {
+      id: 'sharp-5',
+      roman: '#V°7',
+      letter: (tonicIndex + 4) % 7,
+      pc: mod12(parsed.pc + 8),
     },
   ]
   return specs.map((spec) =>

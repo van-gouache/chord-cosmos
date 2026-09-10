@@ -98,12 +98,17 @@ describe('non-diatonic families', () => {
     const symbols = (id: string) =>
       families[id].steps.map((step) => `${step.roman} ${step.symbol}`)
 
+    expect(symbols('sixths')).toEqual(['I6 C6', 'IV6 F6', 'iv6 F-6'])
     expect(symbols('secondary-dominant')).toEqual([
       'V7/II A7',
       'V7/III B7',
       'V7/IV C7',
       'V7/V D7',
       'V7/VI E7',
+    ])
+    expect(symbols('secondary-half-dim')).toEqual([
+      'IIø7/III F#ø7',
+      'IIø7/VI Bø7',
     ])
     expect(symbols('tritone')).toEqual([
       'subV7 Db7',
@@ -114,18 +119,33 @@ describe('non-diatonic families', () => {
       'subV7/VI Bb7',
     ])
     expect(symbols('chromatic')).toEqual([
+      'I7 C7',
+      'II7 D7',
+      'bII6 Db6',
       'bIIΔ7 DbΔ7',
+      'bII7 Db7',
       'bIIIΔ7 EbΔ7',
+      'bIII7 Eb7',
+      'III7 E7',
       'iv-7 F-7',
+      'IV7 F7',
+      '#ivø7 F#ø7',
+      'VI7 A7',
       'bVIΔ7 AbΔ7',
+      'bVI7 Ab7',
+      'VII7 B7',
       'bVIIΔ7 BbΔ7',
+      'bVII7 Bb7',
+      'vii°7 B°7',
     ])
     expect(symbols('borrowed')).toContain('i-7 C-7')
     expect(symbols('borrowed')).toContain('iiø7 Dø7')
     expect(symbols('passing-dim')).toEqual([
+      'I°7 C°7',
       '#I°7 C#°7',
       '#II°7 D#°7',
       '#IV°7 F#°7',
+      '#V°7 G#°7',
     ])
 
     for (const family of Object.values(families)) {
@@ -148,12 +168,24 @@ describe('non-diatonic families', () => {
     )
   })
 
-  it('does not repeat a symbol across families', () => {
-    const steps = progressionFamilies('C', 'ionian').flatMap(
-      (family) => family.steps
+  it('keeps two names for the same chord', () => {
+    const labeled = progressionFamilies('C', 'ionian').flatMap((family) =>
+      family.steps.map((step) => `${step.roman} ${step.symbol}`)
     )
-    const symbols = steps.map((step) => step.symbol)
-    expect(new Set(symbols).size).toBe(symbols.length)
+    expect(labeled).toEqual(expect.arrayContaining([
+      'subV7 Db7',
+      'bII7 Db7',
+      'V7/IV C7',
+      'I7 C7',
+      'subV7/III F7',
+      'IV7 F7',
+      'IIø7/III F#ø7',
+      '#ivø7 F#ø7',
+      'VIIø7 Bø7',
+      'IIø7/VI Bø7',
+    ]))
+    const keys = labeled
+    expect(new Set(keys).size).toBe(keys.length)
   })
 
   it('names any chord in a key, preferring secondary function over chromatic', () => {
@@ -161,6 +193,7 @@ describe('non-diatonic families', () => {
     expect(romanForChord('Dm7', 'C', 'ionian')).toBe('II-7')
     expect(romanForChord('A7', 'C', 'ionian')).toBe('V7/II')
     expect(romanForChord('D7', 'C', 'ionian')).toBe('V7/V')
+    expect(romanForChord('Db6', 'C', 'ionian')).toBe('bII6')
     expect(romanForChord('Db7', 'C', 'ionian')).toBe('subV7')
     expect(romanForChord('C#7', 'C', 'ionian')).toBe('subV7')
     expect(romanForChord('F-7', 'C', 'ionian')).toBe('iv-7')
@@ -194,6 +227,13 @@ describe('progression step hints', () => {
     expect(byRoman['V7/II']).toMatch(/V7 of II/)
     expect(byRoman['II-7/III']).toMatch(/ii of III/)
     expect(byRoman['subV7']).toMatch(/tritone sub/)
+    expect(byRoman['bII7']).toMatch(/subV7/)
+    expect(byRoman['I6']).toMatch(/tonic sixth/)
+    expect(byRoman['iv6']).toMatch(/iv6/)
+    expect(byRoman['#ivø7']).toMatch(/IIø7\/III/)
+    expect(byRoman['vii°7']).toMatch(/leading-tone/)
+    expect(byRoman['I°7']).toMatch(/common-tone/)
+    expect(byRoman['#V°7']).toMatch(/V and VI/)
     expect(byRoman['iv-7']).toMatch(/minor iv/)
     expect(byRoman['#IV°7']).toMatch(/IV and V/)
   })
