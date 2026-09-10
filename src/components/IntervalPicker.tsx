@@ -6,7 +6,7 @@ import {
   type IntervalOption,
   type ParsedChord,
 } from '../theory/chords'
-import { jazzDescribeSet, jazzSuffixFromSemitones } from '../theory/qualities'
+import { jazzDescribeSet, triadSuffixFromSemitones } from '../theory/qualities'
 import { triadTones } from '../theory/triads'
 
 export type IntervalPickerMode = 'vsystem' | 'triads'

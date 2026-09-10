@@ -507,8 +507,8 @@ export function SequencePanel({
   if (!song?.sections) return null
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 px-5 pt-3 pb-3">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header className="min-w-0 shrink-0 px-5 pt-3 pb-3">
         {notebookMode ? (
           <div className="flex min-w-0 items-center gap-3">
             <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-white">
@@ -567,17 +567,17 @@ export function SequencePanel({
               </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <div className="@container mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={isPlaying ? stop : play}
                 disabled={slotCount === 0}
-                className="flex h-8 items-center rounded-lg bg-nebula-600 px-3.5 text-sm font-semibold text-white transition hover:bg-nebula-500 disabled:cursor-not-allowed disabled:bg-cosmos-800 disabled:text-cosmos-600"
+                className="flex h-8 shrink-0 items-center rounded-lg bg-nebula-600 px-3.5 text-sm font-semibold text-white transition hover:bg-nebula-500 disabled:cursor-not-allowed disabled:bg-cosmos-800 disabled:text-cosmos-600"
               >
                 {isPlaying ? '■ Stop' : '▶ Play'}
               </button>
               <div
-                className="flex h-8 items-center rounded-lg border border-cosmos-700 p-0.5"
+                className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 p-0.5"
                 role="group"
                 aria-label="Undo and redo"
               >
@@ -608,7 +608,7 @@ export function SequencePanel({
                 onClick={copy}
                 disabled={slotCount === 0}
                 title="Copy the sequence as text"
-                className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-star-400 hover:text-star-300 disabled:opacity-40"
+                className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-star-400 hover:text-star-300 disabled:opacity-40"
               >
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -616,7 +616,7 @@ export function SequencePanel({
                 <button
                   type="button"
                   onClick={onClear}
-                  className="flex h-8 items-center px-2 text-sm text-cosmos-400 transition hover:text-red-400"
+                  className="flex h-8 shrink-0 items-center px-2 text-sm text-cosmos-400 transition hover:text-red-400"
                 >
                   Clear
                 </button>
@@ -629,7 +629,7 @@ export function SequencePanel({
                   setManagerOpen(false)
                   onToggleNotebook()
                   }}
-                  className="flex h-8 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+                  className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
                 >
                   Notebook
                 </button>
@@ -1424,7 +1424,7 @@ function SlotCell({
           {romanLabel ? (
             <span
               title={romanLabel}
-              className="pointer-events-none absolute top-1.5 left-2 z-10 max-w-[46%] truncate text-[11px] font-semibold tracking-wide text-nebula-300"
+              className="pointer-events-none absolute top-1.5 left-2 z-10 max-w-[46%] truncate text-xs font-semibold tracking-wide text-nebula-300"
             >
               {romanBadge(romanLabel)}
             </span>
@@ -1699,7 +1699,7 @@ function TempoControl({
   onChange: (bpm: number) => void
 }) {
   return (
-    <div className="flex h-8 min-w-[168px] flex-1 items-center gap-2 rounded-lg border border-cosmos-700 bg-cosmos-900 px-2.5 sm:min-w-[220px]">
+    <div className="flex h-8 min-w-0 max-w-full flex-1 basis-[12rem] items-center gap-2 overflow-hidden rounded-lg border border-cosmos-700 bg-cosmos-900 px-2.5">
       <label className="shrink-0 text-[10px] font-semibold tracking-[0.12em] text-cosmos-400 uppercase">
         Tempo
       </label>
@@ -1710,7 +1710,7 @@ function TempoControl({
         value={bpm}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label="Tempo"
-        className="min-w-[64px] flex-1 accent-nebula-500"
+        className="min-w-0 flex-1 accent-nebula-500"
       />
       <input
         type="number"
@@ -1722,9 +1722,9 @@ function TempoControl({
           if (Number.isFinite(next)) onChange(next)
         }}
         aria-label="BPM"
-        className="h-6 w-12 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
+        className="h-6 w-12 shrink-0 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
       />
-      <div className="hidden items-center sm:flex">
+      <div className="hidden shrink-0 items-center @[34rem]:flex">
         {BPM_PRESETS.map((preset) => (
           <button
             key={preset}

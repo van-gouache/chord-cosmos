@@ -96,7 +96,8 @@ describe('song grid helpers', () => {
     expect(next.sections[0].bars[0].keyRoot).toBe('Bb')
     expect(next.sections[0].bars[0].mode).toBe('ionian')
     const roundTrip = normalizeSong(JSON.parse(JSON.stringify(next)))
-    expect(roundTrip.sections[0].bars[0].keyRoot).toBe('Bb')
+    expect(roundTrip).not.toBeNull()
+    expect(roundTrip!.sections[0].bars[0].keyRoot).toBe('Bb')
     expect(firstEmptyInBar(next, song.sections[0].id, bar.id)?.slotIndex).toBe(0)
   })
 

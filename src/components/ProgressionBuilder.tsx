@@ -117,7 +117,7 @@ export function ProgressionBuilder({
                     type="button"
                     title={progressionStepHint(step)}
                     onClick={() => onPickStep(step)}
-                    className={`rounded-md border px-1 py-0.5 text-[10px] font-semibold tracking-wide transition ${
+                    className={`rounded-md border px-1.5 py-0.5 text-xs font-semibold tracking-wide transition ${
                       selectedId === step.id
                         ? 'border-nebula-400 bg-nebula-600/40 text-white'
                         : 'border-cosmos-700 text-cosmos-200 hover:border-nebula-500 hover:text-white'
