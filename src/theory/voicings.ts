@@ -141,12 +141,32 @@ export function generateAllGroups(
   return V_GROUPS.map((group) => generateGroup(chord, group, options))
 }
 
-/** Label for an inversion, e.g. `♭7 in bass`. */
-export function inversionLabel(option: InversionOption): string {
-  const degree = option.bassTone.degree
-  return degree === 'R' ? 'Root in bass' : `${degree} in bass`
+/** Every V-System grip of a chord, easiest to hold first. */
+export function flattenGroupGrips(groups: GroupResult[]): Voicing[] {
+  return groups
+    .flatMap((result) =>
+      result.inversions.flatMap((option) => [
+        ...option.voicings,
+        ...(option.crossed ?? []),
+      ])
+    )
+    .sort(
+      (a, b) =>
+        a.fingering.difficulty - b.fingering.difficulty ||
+        a.fingering.lowestFret - b.fingering.lowestFret ||
+        a.groupId.localeCompare(b.groupId, undefined, { numeric: true }) ||
+        a.inversion - b.inversion
+    )
 }
 
+export function allVSystemGrips(
+  chord: ParsedChord,
+  options: GenerateOptions = {}
+): Voicing[] {
+  return flattenGroupGrips(generateAllGroups(chord, options))
+}
+
+/** Label for an inversion, e.g. `♭7 in bass`. */
 export function voicingMatchingTab(
   option: InversionOption | undefined,
   tab: string

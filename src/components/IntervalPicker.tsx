@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   formatCustomSymbol,
@@ -17,6 +17,7 @@ interface Props {
   sourceSymbol: string
   chord: ParsedChord | null
   onApply: (symbol: string) => void
+  onDraftChange?: (count: number) => void
   mode?: IntervalPickerMode
 }
 
@@ -53,6 +54,7 @@ export function IntervalPicker({
   sourceSymbol,
   chord,
   onApply,
+  onDraftChange,
   mode = 'vsystem',
 }: Props) {
   const voiceCount = mode === 'triads' ? 3 : 4
@@ -67,6 +69,10 @@ export function IntervalPicker({
     setSyncedTo(syncKey)
     setDraft(fromChord())
   }
+
+  useEffect(() => {
+    onDraftChange?.(draft.size)
+  }, [draft, onDraftChange])
 
   const toggle = (semitones: number) => {
     const next = new Set(draft)

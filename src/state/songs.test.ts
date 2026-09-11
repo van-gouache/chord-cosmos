@@ -43,6 +43,9 @@ import {
   toggleSlotHighlight,
   adjustSlotFretExtend,
   shiftSlotOctave,
+  randomizeSlotShape,
+  canRandomizeSlotShape,
+  voicingForSlot,
   playTimeline,
   readImportedSongs,
   saveState,
@@ -340,7 +343,7 @@ describe('song grid helpers', () => {
       barId: filled.sections[0].bars[0].id,
       slotIndex: 0,
     }
-    expect(canInsertSlotAt(filled, location)).toBe(false)
+    expect(canInsertSlotAt(filled, location, 'after')).toBe(false)
     expect(insertSlotAt(filled, location, 'after')).toBeNull()
 
     const roomy = songWithSlots(['Em7', 'A7'])
@@ -349,7 +352,63 @@ describe('song grid helpers', () => {
       barId: roomy.sections[0].bars[0].id,
       slotIndex: 0,
     }
-    expect(canInsertSlotAt(roomy, roomyLocation)).toBe(true)
+    expect(canInsertSlotAt(roomy, roomyLocation, 'after')).toBe(true)
+  })
+
+  it('appends a step after the last chord in a group', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 3,
+    }
+    expect(canInsertSlotAt(song, location, 'after')).toBe(true)
+    const opened = insertSlotAt(song, location, 'after')
+    expect(opened?.location.slotIndex).toBe(4)
+    expect(
+      opened?.song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', 'A7', 'DΔ7', 'GΔ7', null])
+  })
+
+  it('keeps a trailing gap when inserting after the second-to-last chord', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 2,
+    }
+    const opened = insertSlotAt(song, location, 'after')
+    expect(opened?.location.slotIndex).toBe(3)
+    expect(
+      opened?.song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', 'A7', 'DΔ7', null])
+  })
+
+  it('cannot append past the last step of a group already at the maximum', () => {
+    const full = {
+      ...createSong('Full'),
+      sections: [
+        packEntriesIntoSection(
+          Array.from({ length: 31 }, (_, i) =>
+            slot({ id: `g${i}`, chordSymbol: 'CΔ7' })
+          ),
+          'A',
+          32
+        ),
+      ],
+    }
+    const bar = full.sections[0].bars[0]
+    expect(bar.slots).toHaveLength(32)
+    const last = { sectionId: full.sections[0].id, barId: bar.id, slotIndex: 31 }
+    expect(canInsertSlotAt(full, last, 'after')).toBe(false)
+    expect(insertSlotAt(full, last, 'after')).toBeNull()
+
+    // Anywhere earlier can still shift into that trailing gap.
+    const inner = { ...last, slotIndex: 0 }
+    expect(canInsertSlotAt(full, inner, 'after')).toBe(true)
+    expect(
+      insertSlotAt(full, inner, 'after')?.song.sections[0].bars[0].slots
+    ).toHaveLength(32)
   })
 
   it('removes a step and pulls the later chords back', () => {
@@ -847,6 +906,72 @@ describe('song grid helpers', () => {
     expect(back.sections[0].bars[0].slots[0]?.tab).toBe(
       song.sections[0].bars[0].slots[0]?.tab
     )
+  })
+
+  it('swaps a slot for another fingering of the same chord and group', () => {
+    const result = generateGroup(parseChord('Em7'), V_GROUPS_BY_ID['V-2'], {
+      includeVariants: true,
+    })
+    const first = result.inversions[0].voicings[0]
+    expect(first).toBeDefined()
+    const song = createSong('Dice')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(
+      song,
+      location,
+      slot({
+        chordSymbol: 'Em7',
+        groupId: 'V-2',
+        inversion: 0,
+        tab: tabLabel(first!.fingering),
+        highlightedNotes: [{ string: 5, fret: 8 }],
+      })
+    )
+    expect(canRandomizeSlotShape(placed.sections[0].bars[0].slots[0])).toBe(true)
+
+    const rolled = randomizeSlotShape(placed, location, () => 0)
+    const next = rolled.sections[0].bars[0].slots[0]
+    expect(next?.chordSymbol).toBe('Em7')
+    expect(next?.groupId).toBe('V-2')
+    expect(next?.tab).not.toBe(tabLabel(first!.fingering))
+    expect(next?.highlightedNotes).toBeUndefined()
+    expect(hydrateSlot(next!).fingering).not.toBeNull()
+    const workshop = voicingForSlot(next!)
+    expect(workshop?.groupId).toBe('V-2')
+    expect(workshop?.chordSymbol).toBe('E-7')
+    expect(tabLabel(workshop!.fingering)).toBe(next!.tab)
+  })
+
+  it('leaves a line or a one-shape family alone', () => {
+    const song = songWithSlots(['Em7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const lined = placeSlot(song, location, {
+      id: 'line-1',
+      chordSymbol: 'Line',
+      groupId: 'Line',
+      inversion: 0,
+      tab: 'x-x-x-x-x-x',
+      note: '',
+      lineNotes: [{ string: 5, fret: 8 }],
+    })
+    expect(canRandomizeSlotShape(lined.sections[0].bars[0].slots[0])).toBe(false)
+    expect(randomizeSlotShape(lined, location)).toBe(lined)
+
+    const custom = placeSlot(
+      song,
+      location,
+      slot({ chordSymbol: 'C', groupId: 'Custom', tab: 'x-3-2-0-1-0' })
+    )
+    expect(canRandomizeSlotShape(custom.sections[0].bars[0].slots[0])).toBe(false)
+    expect(randomizeSlotShape(custom, location)).toBe(custom)
   })
 
   it('hydrates a hand-built fretboard chord from its tab', () => {

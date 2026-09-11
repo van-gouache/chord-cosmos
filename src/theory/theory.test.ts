@@ -27,7 +27,12 @@ import {
   TRIAD_GROUPS_BY_ID,
   triadTones,
 } from './triads'
-import { generateAllGroups, generateGroup, voicingMatchingTab } from './voicings'
+import {
+  allVSystemGrips,
+  generateAllGroups,
+  generateGroup,
+  voicingMatchingTab,
+} from './voicings'
 import {
   ALL_QUALITY_CHIPS,
   TRIAD_QUALITY_CHIPS,
@@ -798,5 +803,45 @@ describe('octave fret shift', () => {
     expect(rebuilt).not.toBeNull()
     expect(tabLabel(rebuilt!)).toBe('12-14-12-12-x-x')
     expect(rebuilt!.lowestFret).toBe(12)
+  })
+
+  it('counts open strings toward how far the grip reaches', () => {
+    const open = fingeringFromTab('x-x-0-0-0-0')
+    const openPosition = fingeringFromTab('0-2-0-0-x-x')
+    const compact = fingeringFromTab('x-7-9-7-8-x')
+    const drone = fingeringFromTab('x-x-0-0-0-12')
+    expect(open).not.toBeNull()
+    expect(openPosition).not.toBeNull()
+    expect(compact).not.toBeNull()
+    expect(drone).not.toBeNull()
+    expect(open!.difficulty).toBeLessThan(compact!.difficulty)
+    expect(openPosition!.difficulty).toBeLessThan(drone!.difficulty)
+    expect(compact!.difficulty).toBeLessThan(drone!.difficulty)
+  })
+})
+
+describe('all V-System grips', () => {
+  it('lists every group and inversion, easiest first', () => {
+    const chord = parseChord('Em7')
+    const groups = generateAllGroups(chord)
+    const grips = allVSystemGrips(chord)
+    const expected = groups.reduce((n, group) => n + group.voicingCount, 0)
+    expect(grips.length).toBe(expected)
+    expect(grips.length).toBeGreaterThan(40)
+    expect(new Set(grips.map((grip) => grip.groupId)).size).toBeGreaterThan(8)
+    expect(new Set(grips.map((grip) => grip.inversion)).size).toBe(4)
+    for (let i = 1; i < grips.length; i++) {
+      expect(grips[i]!.fingering.difficulty).toBeGreaterThanOrEqual(
+        grips[i - 1]!.fingering.difficulty
+      )
+    }
+    const firstPage = grips.slice(0, 12)
+    expect(
+      firstPage.some(
+        (grip) =>
+          grip.fingering.notes.some((note) => note.fret === 0) &&
+          grip.fingering.highestFret >= 12
+      )
+    ).toBe(false)
   })
 })

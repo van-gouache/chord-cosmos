@@ -6,6 +6,7 @@ import { SplashScreen } from './components/SplashScreen'
 import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
+import { GripCatalogModal } from './components/GripCatalogModal'
 import { unlockAudio } from './audio/player'
 import { WorkshopConfig } from './components/WorkshopConfig'
 import { CircleOfFifths } from './components/CircleOfFifths'
@@ -16,7 +17,7 @@ import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
 import { isLineGroupId } from './theory/lineOutline'
 import type { ProgressionStep } from './theory/diatonic'
-import { generateAllTriads, generateTriadGroup, TRIAD_GROUPS_BY_ID } from './theory/triads'
+import { generateAllTriads, generateTriadGroup, isTriadGroupId, TRIAD_GROUPS_BY_ID } from './theory/triads'
 import { V_GROUPS_BY_ID } from './theory/vsystem'
 import { generateAllGroups, generateGroup, type Voicing } from './theory/voicings'
 
@@ -50,6 +51,8 @@ export default function App() {
   const [playingSlot, setPlayingSlot] = useState<SlotLocation | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [workshopOpen, setWorkshopOpen] = useState(true)
+  const [gripCatalogOpen, setGripCatalogOpen] = useState(false)
+  const [selectedToneCount, setSelectedToneCount] = useState(0)
   const [pendingProgression, setPendingProgression] = useState<{
     location: SlotLocation
     stepId: string
@@ -149,6 +152,13 @@ export default function App() {
     return nextChordForWorkshop(songs.activeSong, chord, selectedSlot)
   }, [chord, songs.activeSong, selectedSlot])
 
+  const canOpenGripCatalog =
+    workshopTab === 'vsystem' && Boolean(chord) && selectedToneCount === 4
+
+  useEffect(() => {
+    if (!canOpenGripCatalog) setGripCatalogOpen(false)
+  }, [canOpenGripCatalog])
+
   const groups = useMemo(() => (chord ? generateAllGroups(chord) : []), [chord])
   const triadGroups = useMemo(
     () => (chord ? generateAllTriads(chord) : []),
@@ -214,6 +224,19 @@ export default function App() {
     selectedVoicing.groupId === activeGroupId
       ? selectedVoicing
       : null
+
+  const loadVoicingIntoWorkshop = (voicing: Voicing) => {
+    setInput(voicing.chordSymbol)
+    if (isTriadGroupId(voicing.groupId)) {
+      setWorkshopTab('triads')
+      setRequestedTriadId(voicing.groupId)
+    } else {
+      setWorkshopTab('vsystem')
+      setRequestedGroupId(voicing.groupId)
+    }
+    setSelectedVoicing(voicing)
+    setWorkshopOpen(true)
+  }
 
   const handleAdd = (voicing: Voicing) => {
     const placed = songs.addVoicing(voicing, selectedSlot, {
@@ -320,6 +343,11 @@ export default function App() {
             onToggleHighlight={songs.toggleHighlight}
             onExtendFrets={songs.extendFrets}
             onShiftSlotOctave={songs.shiftSlotOctave}
+            onRandomizeSlot={(location) => {
+              const voicing = songs.randomizeSlotShape(location)
+              setSelectedSlot(location)
+              if (voicing) loadVoicingIntoWorkshop(voicing)
+            }}
             onAddGroup={songs.addBar}
             onDuplicateGroup={songs.duplicateBar}
             onMoveGroup={songs.moveBar}
@@ -385,13 +413,35 @@ export default function App() {
                         : 'Type a chord to add shapes'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setWorkshopOpen(false)}
-                  className="rounded-lg border border-cosmos-700 px-2.5 py-1 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
-                >
-                  Hide
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {workshopTab === 'vsystem' && (
+                    <button
+                      type="button"
+                      disabled={!canOpenGripCatalog}
+                      onClick={() => setGripCatalogOpen(true)}
+                      aria-label={
+                        canOpenGripCatalog && chord
+                          ? `Browse every V-System grip of ${chord.symbol}`
+                          : 'Select four chord tones to browse every V-System grip'
+                      }
+                      title={
+                        canOpenGripCatalog
+                          ? 'Every V-System group and inversion, easiest first'
+                          : 'Select four chord tones first'
+                      }
+                      className="rounded-lg border border-cosmos-700 px-2.5 py-1 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-cosmos-700 disabled:hover:text-cosmos-300"
+                    >
+                      All grips
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setWorkshopOpen(false)}
+                    className="rounded-lg border border-cosmos-700 px-2.5 py-1 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+                  >
+                    Hide
+                  </button>
+                </div>
               </div>
 
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
@@ -491,6 +541,7 @@ export default function App() {
                     error={error}
                     mode={workshopTab === 'triads' ? 'triads' : 'vsystem'}
                     qualityNonce={qualityNonce}
+                    onIntervalCountChange={setSelectedToneCount}
                   />
                   {voicingTargetBar && !voicingTargetBar.keyRoot && chord ? (
                     <div className="mt-3 rounded-lg border border-cosmos-800/80 bg-cosmos-950/50 p-2">
@@ -603,6 +654,21 @@ export default function App() {
             </button>
           ))}
       </div>
+
+      {chord && (
+        <GripCatalogModal
+          open={gripCatalogOpen && canOpenGripCatalog}
+          chord={chord}
+          groups={groups}
+          selectedVoicingId={selectedVoicing?.id ?? null}
+          onClose={() => setGripCatalogOpen(false)}
+          onSelect={loadVoicingIntoWorkshop}
+          onAdd={(voicing) => {
+            loadVoicingIntoWorkshop(voicing)
+            handleAdd(voicing)
+          }}
+        />
+      )}
 
       {/* Confirmation that a shape landed in the sequence */}
       {justAdded && !notebookMode && (

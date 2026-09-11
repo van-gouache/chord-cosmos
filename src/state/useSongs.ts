@@ -40,6 +40,8 @@ import {
   resolveAddLocation,
   slotAt,
   shiftSlotOctave,
+  randomizeSlotShape,
+  voicingForSlot,
   toggleSlotHighlight,
   adjustSlotFretExtend,
   readImportedSongs,
@@ -370,6 +372,21 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const randomizeSlotShapeBy = useCallback(
+    (location: SlotLocation): Voicing | null => {
+      if (!activeSong) return null
+      let voicing: Voicing | null = null
+      updateSong(activeSong.id, (song) => {
+        const next = randomizeSlotShape(song, location)
+        const slot = slotAt(next, location)
+        voicing = slot ? voicingForSlot(slot) : null
+        return next
+      })
+      return voicing
+    },
+    [activeSong, updateSong]
+  )
+
   const moveBarBy = useCallback(
     (
       from: { sectionId: string; barId: string },
@@ -638,6 +655,7 @@ export function useSongs() {
     toggleHighlight,
     extendFrets,
     shiftSlotOctave: shiftSlotOctaveBy,
+    randomizeSlotShape: randomizeSlotShapeBy,
     addBar,
     duplicateBar: duplicateBarBy,
     moveBar: moveBarBy,

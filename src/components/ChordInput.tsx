@@ -19,6 +19,7 @@ interface Props {
   mode?: IntervalPickerMode
   /** Bumped when the workshop tab changes so leftover quality chips unselect. */
   qualityNonce?: number
+  onIntervalCountChange?: (count: number) => void
 }
 
 const ROOTS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
@@ -30,6 +31,7 @@ export function ChordInput({
   error,
   mode = 'vsystem',
   qualityNonce = 0,
+  onIntervalCountChange,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   // Only used while the typed symbol is unreadable; otherwise the root comes
@@ -187,6 +189,7 @@ export function ChordInput({
           setQualityHighlight(true)
           onChange(symbol)
         }}
+        onDraftChange={onIntervalCountChange}
         mode={mode}
       />
     </div>

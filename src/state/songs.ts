@@ -39,7 +39,12 @@ import {
   TRIAD_GROUPS_BY_ID,
 } from '../theory/triads'
 import { buildShape, V_GROUPS_BY_ID, type VoicingShape } from '../theory/vsystem'
-import { generateGroup, voicingMatchingTab, type Voicing } from '../theory/voicings'
+import {
+  generateGroup,
+  voicingMatchingTab,
+  type GroupResult,
+  type Voicing,
+} from '../theory/voicings'
 import {
   DEFAULT_MODE,
   isKeyCenter,
@@ -628,6 +633,82 @@ export function shiftSlotOctave(
   })
 }
 
+function flattenGroupVoicings(result: GroupResult): Voicing[] {
+  return result.inversions.flatMap((option) => [
+    ...option.voicings,
+    ...(option.crossed ?? []),
+  ])
+}
+
+/** Playable fingerings of this slot's chord in the same voicing family. */
+export function voicingsForSlot(slot: SequenceSlot): Voicing[] {
+  if (isLineGroupId(slot.groupId) || isCustomGroupId(slot.groupId)) return []
+  const { chord } = tryParseChord(slot.chordSymbol)
+  if (!chord) return []
+  if (isTriadGroupId(slot.groupId)) {
+    const group = TRIAD_GROUPS_BY_ID[slot.groupId]
+    if (!group) return []
+    return flattenGroupVoicings(
+      generateTriadGroup(chord, group, { includeVariants: true })
+    )
+  }
+  const group = V_GROUPS_BY_ID[slot.groupId]
+  if (!group) return []
+  return flattenGroupVoicings(
+    generateGroup(chord, group, { includeVariants: true })
+  )
+}
+
+function isCurrentSlotVoicing(slot: SequenceSlot, voicing: Voicing): boolean {
+  return (
+    voicing.inversion === slot.inversion &&
+    tabLabel(voicing.fingering) === slot.tab
+  )
+}
+
+/** The workshop voicing that matches this placed shape, if any. */
+export function voicingForSlot(slot: SequenceSlot): Voicing | null {
+  return (
+    voicingsForSlot(slot).find((voicing) => isCurrentSlotVoicing(slot, voicing)) ??
+    null
+  )
+}
+
+/** Whether this card has another fingering the dice can land on. */
+export function canRandomizeSlotShape(
+  slot: SequenceSlot | null | undefined
+): boolean {
+  if (!slot) return false
+  return voicingsForSlot(slot).some((voicing) => !isCurrentSlotVoicing(slot, voicing))
+}
+
+/**
+ * Swaps the placed fingering for another of the same chord and voicing
+ * family. No-op for lines, custom grips, or a family with only one shape.
+ */
+export function randomizeSlotShape(
+  song: Song,
+  location: SlotLocation,
+  pickIndex: (length: number) => number = (n) => Math.floor(Math.random() * n)
+): Song {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  const slot = bar?.slots[location.slotIndex]
+  if (!slot) return song
+  const others = voicingsForSlot(slot).filter(
+    (voicing) => !isCurrentSlotVoicing(slot, voicing)
+  )
+  if (others.length === 0) return song
+  const index = pickIndex(others.length)
+  const next = others[index]
+  if (!next || index < 0 || index >= others.length) return song
+  return patchSlot(song, location, {
+    inversion: next.inversion,
+    tab: tabLabel(next.fingering),
+    highlightedNotes: undefined,
+  })
+}
+
 export function countSlots(song: Song): number {
   let n = 0
   for (const section of song.sections) {
@@ -778,7 +859,9 @@ export function insertSlotAt(
 
   const slots = [...bar.slots]
   slots.splice(at, 0, null)
-  if (slots[slots.length - 1] === null) slots.pop()
+  // Only reclaim a trailing gap that something actually shifted into,
+  // otherwise appending past the last chord would pop the step it just opened.
+  if (at < slots.length - 1 && slots[slots.length - 1] === null) slots.pop()
   else if (slots.length > MAX_STEPS_PER_MEASURE) return null
 
   return {
@@ -806,14 +889,21 @@ export function removeStepAt(song: Song, location: SlotLocation): Song {
   return mapBar(song, location.barId, (current) => ({ ...current, slots }))
 }
 
-/** Whether `insertSlotAt` would succeed for this step. */
-export function canInsertSlotAt(song: Song, location: SlotLocation): boolean {
+/** Whether `insertSlotAt` would succeed on this side of this step. */
+export function canInsertSlotAt(
+  song: Song,
+  location: SlotLocation,
+  side: 'before' | 'after'
+): boolean {
   const bar = findBar(song, location.barId)
   if (!bar) return false
-  return (
-    bar.slots[bar.slots.length - 1] === null ||
-    bar.slots.length < MAX_STEPS_PER_MEASURE
-  )
+  const at = side === 'after' ? location.slotIndex + 1 : location.slotIndex
+  // Appending past the last step has to widen the group; anywhere else can
+  // shift into a trailing gap instead.
+  if (at < bar.slots.length && bar.slots[bar.slots.length - 1] === null) {
+    return true
+  }
+  return bar.slots.length < MAX_STEPS_PER_MEASURE
 }
 
 export function parseStrumPattern(value: string | undefined): StrumStroke[] {

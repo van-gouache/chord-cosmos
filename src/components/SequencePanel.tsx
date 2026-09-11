@@ -63,6 +63,7 @@ import { DEFAULT_MODE, romanBadge, romanForChord } from '../theory/diatonic'
 import type { Fingering } from '../theory/fretboard'
 import type { VoicingShape } from '../theory/vsystem'
 import { inversionOrdinal } from '../theory/voicings'
+import { isCustomGroupId } from '../theory/customVoicing'
 import { isLineGroupId } from '../theory/lineOutline'
 import { ChordDiagram, type DiagramSize } from './ChordDiagram'
 import { diagramFretWindow } from './fretWindow'
@@ -115,6 +116,7 @@ interface Props {
     delta: number
   ) => void
   onShiftSlotOctave: (location: SlotLocation, deltaFrets: number) => void
+  onRandomizeSlot: (location: SlotLocation) => void
   onAddGroup: (sectionId: string) => void
   onDuplicateGroup: (sectionId: string, measureId: string) => void
   onMoveGroup: (
@@ -192,6 +194,7 @@ export function SequencePanel({
   onToggleHighlight,
   onExtendFrets,
   onShiftSlotOctave,
+  onRandomizeSlot,
   onAddGroup,
   onDuplicateGroup,
   onMoveGroup,
@@ -853,9 +856,15 @@ export function SequencePanel({
             <div className="flex flex-wrap items-stretch gap-3">
               {section.bars.map((bar, barIndex) => {
                 const steps = barSteps(bar)
-                const canInsertInBar =
-                  bar.slots[bar.slots.length - 1] === null ||
-                  bar.slots.length < MAX_STEPS_PER_MEASURE
+                const hasTrailingGap = bar.slots[bar.slots.length - 1] === null
+                const canInsertBeside = (
+                  slotIndex: number,
+                  side: 'before' | 'after'
+                ) => {
+                  const at = side === 'after' ? slotIndex + 1 : slotIndex
+                  if (at < bar.slots.length && hasTrailingGap) return true
+                  return bar.slots.length < MAX_STEPS_PER_MEASURE
+                }
                 const showMeasureLabel =
                   !false ||
                   song.sections.some((item) => item.bars.length > 1) ||
@@ -1167,7 +1176,7 @@ export function SequencePanel({
                             })
                           }}
                           onRemove={() => onRemoveSlot(location)}
-                          canInsert={canInsertInBar}
+                          canInsert={(side) => canInsertBeside(slotIndex, side)}
                           onInsert={(side) => onInsertSlot(location, side)}
                           onRemoveStep={() => onRemoveStep(location)}
                           onDuplicate={() => onDuplicateSlot(location)}
@@ -1207,6 +1216,7 @@ export function SequencePanel({
                             onExtendFrets(location, edge, delta)
                           }
                           onOctaveShift={(delta) => onShiftSlotOctave(location, delta)}
+                          onRandomize={() => onRandomizeSlot(location)}
                           onDragStart={() => setDragFrom(location)}
                           onDragEnd={() => {
                             setDragFrom(null)
@@ -1334,7 +1344,7 @@ interface SlotCellProps {
   onSelect: () => void
   onPreview: () => void
   onRemove: () => void
-  canInsert: boolean
+  canInsert: (side: 'before' | 'after') => boolean
   onInsert: (side: 'before' | 'after') => void
   onRemoveStep: () => void
   onDuplicate: () => void
@@ -1353,6 +1363,7 @@ interface SlotCellProps {
   onToggleHighlight: (note: { string: number; fret: number }) => void
   onExtendFrets: (edge: 'low' | 'high', delta: number) => void
   onOctaveShift: (deltaFrets: number) => void
+  onRandomize: () => void
   onDragStart: () => void
   onDragEnd: () => void
   onDragOver: () => void
@@ -1401,6 +1412,7 @@ function SlotCell({
   onToggleHighlight,
   onExtendFrets,
   onOctaveShift,
+  onRandomize,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -1684,6 +1696,23 @@ function SlotCell({
                       className={slotIconClass}
                     >
                       ▶
+                    </button>
+                  )}
+                  {!isLine && !isCustomGroupId(slot.groupId) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRandomize()
+                      }}
+                      onDragEnter={allowDrop}
+                      onDragOver={allowDrop}
+                      onDrop={handleDrop}
+                      aria-label={`Pick a random shape of ${chordName}`}
+                      title="Random shape of this chord"
+                      className={slotIconClass}
+                    >
+                      ⚄
                     </button>
                   )}
                   <button
@@ -2049,7 +2078,7 @@ function InsertSlotButtons({
   onDrop,
 }: {
   chordName: string
-  canInsert: boolean
+  canInsert: (side: 'before' | 'after') => boolean
   onInsert: (side: 'before' | 'after') => void
   onDragEnter: SlotDragHandler
   onDragOver: SlotDragHandler
@@ -2072,15 +2101,17 @@ function InsertSlotButtons({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      {sides.map(({ side, glyph, word }) => (
+      {sides.map(({ side, glyph, word }) => {
+        const allowed = canInsert(side)
+        return (
         <button
           key={side}
           type="button"
-          disabled={!canInsert}
+          disabled={!allowed}
           onClick={() => onInsert(side)}
           aria-label={`Insert an empty step ${word} ${chordName}`}
           title={
-            canInsert
+            allowed
               ? `Insert an empty step ${word} ${chordName}`
               : `This group is full — raise its chord count to insert ${word} ${chordName}`
           }
@@ -2088,7 +2119,8 @@ function InsertSlotButtons({
         >
           {glyph}
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

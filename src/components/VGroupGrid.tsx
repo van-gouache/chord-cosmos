@@ -13,10 +13,13 @@ interface Props {
  */
 export function VGroupGrid({ groups, selectedGroupId, onSelect }: Props) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-2">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-1.5">
       {groups.map((result) => {
         const { group, preview, unreachable, voicingCount } = result
         const selected = group.id === selectedGroupId
+        const shapes = unreachable
+          ? 'no shapes'
+          : `${voicingCount} shape${voicingCount === 1 ? '' : 's'}`
 
         return (
           <button
@@ -32,12 +35,13 @@ export function VGroupGrid({ groups, selectedGroupId, onSelect }: Props) {
               beginVoicingDrag(event, preview)
             }}
             onClick={() => onSelect(group.id)}
+            aria-label={`${group.id}, gaps ${group.gaps.join(' ')}, ${shapes}`}
             title={
               preview
-                ? `${group.id}${group.dropName ? ` (${group.dropName})` : ''} — drag onto the sequence, or click to open inversions. ${group.description}`
+                ? `${group.id}${group.dropName ? ` (${group.dropName})` : ''} · ${shapes} — drag onto the sequence, or click to open inversions. ${group.description}`
                 : `${group.id} — gaps ${group.gaps.join('·')}. ${group.description}`
             }
-            className={`flex flex-col gap-1 rounded-xl border px-3 py-2.5 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-lg border px-2 py-1.5 text-left transition ${
               selected
                 ? 'cursor-grab border-nebula-500 bg-nebula-500/12 active:cursor-grabbing'
                 : unreachable
@@ -46,19 +50,17 @@ export function VGroupGrid({ groups, selectedGroupId, onSelect }: Props) {
             }`}
           >
             <span
-              className={`text-sm font-bold ${
+              className={`text-sm leading-none font-bold ${
                 selected ? 'text-nebula-400' : 'text-white'
               }`}
             >
               {group.id}
             </span>
-            <span className="font-mono text-[11px] tabular-nums text-cosmos-300">
-              {group.gaps.join(' · ')}
+            <span className="font-mono text-[11px] leading-none tabular-nums text-cosmos-300">
+              {group.gaps.join('·')}
             </span>
-            <span className="text-[10px] text-cosmos-400">
-              {unreachable
-                ? '—'
-                : `${voicingCount} shape${voicingCount === 1 ? '' : 's'}`}
+            <span className="ml-auto text-[10px] leading-none tabular-nums text-cosmos-400">
+              {unreachable ? '—' : voicingCount}
             </span>
           </button>
         )

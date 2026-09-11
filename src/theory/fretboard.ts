@@ -111,14 +111,23 @@ function evaluateFingering(
   const strings: (number | null)[] = Array(STRING_COUNT).fill(null)
   for (const note of notes) strings[note.string] = note.fret
 
+  // Ease uses every sounding fret, including opens as 0. That is the stretch
+  // you'd have to hold if you moved the whole grip up a half step (opens
+  // become fret 1). Search rejection still uses `span`, the fretted stretch.
+  const reachSpan =
+    notes.length === 0
+      ? 0
+      : Math.max(...notes.map((note) => note.fret)) -
+        Math.min(...notes.map((note) => note.fret))
+
   // A rough playability cost. The weights are tuned so the shapes a guitarist
   // would actually reach for float to the top of the list.
   let difficulty = 0
-  difficulty += span * 2.5
+  difficulty += reachSpan * 2.5
   difficulty += Math.max(0, fingersNeeded - 3) * 2
   difficulty += innerMutes.length * 3
   if (barreFret !== null) difficulty += 1.5
-  if (span >= 4) difficulty += 3
+  if (reachSpan >= 4) difficulty += 3
   if (lowestFret > 12) difficulty += 2
   // Very low fretted stretches are harder than the same span up the neck.
   if (lowestFret > 0 && lowestFret <= 3 && span >= 3) difficulty += 2

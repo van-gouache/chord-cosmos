@@ -18,7 +18,6 @@ import { midiToOctave } from '../theory/pitch'
 import { displayChordSymbol, type ParsedChord } from '../theory/chords'
 import { suggestForwardTargets } from '../theory/betweenTargets'
 import {
-  inversionLabel,
   inversionOrdinal,
   shiftVoicing,
   type GroupResult,
@@ -93,6 +92,19 @@ export function VoicingPicker({
   useEffect(() => {
     setOctaveFrets(0)
   }, [selectedVoicingId, group.id, inversion])
+
+  // Follow a shape loaded from the sequence (dice roll, etc.) so the
+  // inversion chips and neck grid show the same grip as the card.
+  useEffect(() => {
+    const match = inversions
+      .flatMap((option) => [...option.voicings, ...(option.crossed ?? [])])
+      .find((voicing) => voicing.id === selectedVoicingId)
+    if (!match) return
+    setRequestedInversion(match.inversion)
+    if (difficultyLabel(match.fingering.difficulty) === 'hard') {
+      setHideHard(false)
+    }
+  }, [inversions, selectedVoicingId])
 
   const displaySelected = useMemo(() => {
     if (!selected) return null
@@ -180,12 +192,17 @@ export function VoicingPicker({
                   beginVoicingDrag(event, shape)
                 }}
                 onClick={() => setRequestedInversion(option.inversion)}
+                aria-label={`${inversionOrdinal(option.inversion)}, ${
+                  option.bassTone.name
+                } in the bass, ${
+                  disabled ? 'unreachable' : `${option.voicings.length} shapes`
+                }`}
                 title={
                   disabled
-                    ? `${inversionOrdinal(option.inversion)} — ${option.bassTone.name} in the bass`
-                    : `${inversionOrdinal(option.inversion)} — drag onto the sequence, or click to see positions`
+                    ? `${inversionOrdinal(option.inversion)} — ${option.bassTone.name} in the bass, unreachable`
+                    : `${inversionOrdinal(option.inversion)} — ${option.bassTone.name} in the bass, ${option.voicings.length} shapes. Drag onto the sequence, or click to see positions`
                 }
-                className={`rounded-lg border px-3 py-2 text-left transition ${
+                className={`flex items-baseline gap-1.5 rounded-lg border px-2 py-1.5 transition ${
                   isActive
                     ? 'cursor-grab border-nebula-500 bg-nebula-500/15 active:cursor-grabbing'
                     : disabled
@@ -194,15 +211,19 @@ export function VoicingPicker({
                 }`}
               >
                 <span
-                  className={`block text-sm font-semibold ${
+                  className={`text-sm leading-none font-semibold ${
                     isActive ? 'text-white' : 'text-cosmos-300'
                   }`}
                 >
-                  {inversionLabel(option)}
+                  {option.bassTone.degree === 'R'
+                    ? 'Root'
+                    : option.bassTone.degree}
                 </span>
-                <span className="block text-[11px] text-cosmos-400">
-                  {option.bassTone.name} ·{' '}
-                  {disabled ? 'unreachable' : `${option.voicings.length} shapes`}
+                <span className="font-mono text-[11px] leading-none text-cosmos-300">
+                  {option.bassTone.name}
+                </span>
+                <span className="text-[10px] leading-none tabular-nums text-cosmos-400">
+                  {disabled ? '—' : option.voicings.length}
                 </span>
               </button>
             )
