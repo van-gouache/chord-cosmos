@@ -28,6 +28,8 @@ import {
   emptyBar,
   emptySection,
   firstEmptyLocation,
+  insertSlotAt,
+  removeStepAt,
   lastBarSteps,
   loadState,
   moveSlot,
@@ -44,6 +46,7 @@ import {
   saveState,
   setBarSteps,
   setBarHarmony,
+  setBarName,
   slotFromVoicing,
   slotFromLineNotes,
   type SequenceSlot,
@@ -236,6 +239,29 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const insertSlot = useCallback(
+    (location: SlotLocation, side: 'before' | 'after'): SlotLocation | null => {
+      if (!activeSong) return null
+      let opened: SlotLocation | null = null
+      updateSong(activeSong.id, (song) => {
+        const result = insertSlotAt(song, location, side)
+        if (!result) return song
+        opened = result.location
+        return result.song
+      })
+      return opened
+    },
+    [activeSong, updateSong]
+  )
+
+  const removeStep = useCallback(
+    (location: SlotLocation) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) => removeStepAt(song, location))
+    },
+    [activeSong, updateSong]
+  )
+
   const relocateSlot = useCallback(
     (from: SlotLocation, to: SlotLocation) => {
       if (!activeSong) return
@@ -385,6 +411,16 @@ export function useSongs() {
     (barId: string, collapsed: boolean) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => setBarCollapsed(song, barId, collapsed))
+    },
+    [activeSong, updateSong]
+  )
+
+  const renameGroup = useCallback(
+    (barId: string, name: string) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) => setBarName(song, barId, name), {
+        coalesce: true,
+      })
     },
     [activeSong, updateSong]
   )
@@ -590,6 +626,8 @@ export function useSongs() {
     addLine,
     placeIncoming,
     removeSlot,
+    insertSlot,
+    removeStep,
     relocateSlot,
     duplicateSlot,
     setSlotNote,
@@ -608,6 +646,7 @@ export function useSongs() {
     duplicateSection: duplicateSectionBy,
     setSectionCollapsed: setSectionCollapsedBy,
     setBarCollapsed: setBarCollapsedBy,
+    renameGroup,
     renameSection,
     setSectionNote,
     removeSection,

@@ -34,6 +34,9 @@ export default function App() {
   const [showCircleOfFifths, setShowCircleOfFifths] = useState(
     () => loadPrefs().showCircleOfFifths
   )
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(
+    () => loadPrefs().sequenceToolbarCollapsed
+  )
   const [notebookMode, setNotebookMode] = useState(false)
   const [notebookStyle, setNotebookStyle] = useState(
     () => loadPrefs().notebookStyle
@@ -285,6 +288,13 @@ export default function App() {
             onDeleteSong={songs.deleteSong}
             onRename={songs.renameSong}
             onRemoveSlot={songs.removeSlot}
+            onInsertSlot={(location, side) => {
+              const opened = songs.insertSlot(location, side)
+              if (!opened) return
+              setSelectedSlot(opened)
+              setPendingProgression(null)
+            }}
+            onRemoveStep={songs.removeStep}
             onMoveSlot={songs.relocateSlot}
             onPlaceIncoming={(location, slot) => {
               const roman = romanForPlacement(location, slot.chordSymbol)
@@ -318,6 +328,7 @@ export default function App() {
             onDuplicateSection={songs.duplicateSection}
             onSetSectionCollapsed={songs.setSectionCollapsed}
             onSetBarCollapsed={songs.setBarCollapsed}
+            onRenameGroup={songs.renameGroup}
             onRenameSection={songs.renameSection}
             onSetSectionNote={songs.setSectionNote}
             onRemoveSection={songs.removeSection}
@@ -337,6 +348,13 @@ export default function App() {
             onPlayingLocationChange={setPlayingSlot}
             workshopChordSymbol={chord?.symbol ?? input}
             notebookStyle={notebookStyle}
+            toolbarCollapsed={toolbarCollapsed}
+            onToggleToolbar={() => {
+              setToolbarCollapsed((collapsed) => {
+                updatePrefs({ sequenceToolbarCollapsed: !collapsed })
+                return !collapsed
+              })
+            }}
             onToggleNotebook={toggleNotebook}
             onNotebookStyleChange={(style) => {
               setNotebookStyle(style)

@@ -33,6 +33,7 @@ import {
   MIN_BPM,
   MIN_SLOT_BEATS,
   MIN_STEPS_PER_MEASURE,
+  barLabel,
   barSteps,
   exportSong,
   formatStrumPattern,
@@ -89,6 +90,8 @@ interface Props {
   onDeleteSong: (id: string) => void
   onRename: (id: string, name: string) => void
   onRemoveSlot: (location: SlotLocation) => void
+  onInsertSlot: (location: SlotLocation, side: 'before' | 'after') => void
+  onRemoveStep: (location: SlotLocation) => void
   onMoveSlot: (from: SlotLocation, to: SlotLocation) => void
   onPlaceIncoming: (location: SlotLocation, slot: SequenceSlot) => void
   onDuplicateSlot: (location: SlotLocation) => void
@@ -123,6 +126,7 @@ interface Props {
   onDuplicateSection: (sectionId: string) => void
   onSetSectionCollapsed: (sectionId: string, collapsed: boolean) => void
   onSetBarCollapsed: (barId: string, collapsed: boolean) => void
+  onRenameGroup: (barId: string, name: string) => void
   onRenameSection: (sectionId: string, name: string) => void
   onSetSectionNote: (sectionId: string, note: string) => void
   onRemoveSection: (sectionId: string) => void
@@ -155,6 +159,8 @@ interface Props {
   onPlayingLocationChange?: (location: SlotLocation | null) => void
   notebookMode?: boolean
   notebookStyle?: NotebookStyle
+  toolbarCollapsed?: boolean
+  onToggleToolbar?: () => void
   onToggleNotebook?: () => void
   onNotebookStyleChange?: (style: NotebookStyle) => void
   workshopChordSymbol?: string
@@ -171,6 +177,8 @@ export function SequencePanel({
   onDeleteSong,
   onRename,
   onRemoveSlot,
+  onInsertSlot,
+  onRemoveStep,
   onMoveSlot,
   onPlaceIncoming,
   onDuplicateSlot,
@@ -192,6 +200,7 @@ export function SequencePanel({
   onDuplicateSection,
   onSetSectionCollapsed,
   onSetBarCollapsed,
+  onRenameGroup,
   onRenameSection,
   onSetSectionNote,
   onRemoveSection,
@@ -213,6 +222,8 @@ export function SequencePanel({
   onPlayingLocationChange,
   notebookMode = false,
   notebookStyle = 'cream',
+  toolbarCollapsed = false,
+  onToggleToolbar,
   onToggleNotebook,
   onNotebookStyleChange,
   workshopChordSymbol,
@@ -524,7 +535,11 @@ export function SequencePanel({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="min-w-0 shrink-0 px-5 pt-3 pb-3">
+      <header
+        className={`min-w-0 shrink-0 px-5 ${
+          !notebookMode && toolbarCollapsed ? 'py-1.5' : 'pt-3 pb-3'
+        }`}
+      >
         {notebookMode ? (
           <div className="flex min-w-0 items-center gap-3">
             <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-white">
@@ -557,6 +572,34 @@ export function SequencePanel({
                 Exit
               </button>
             </div>
+          </div>
+        ) : toolbarCollapsed ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              aria-expanded={false}
+              onClick={onToggleToolbar}
+              aria-label="Show the sequence toolbar"
+              title="Show the toolbar"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-nebula-400/80 bg-nebula-600/30 px-2.5 py-1 text-xs font-semibold tracking-wide text-white shadow-[0_0_0_1px_rgba(79,108,255,0.25)] transition hover:border-nebula-300 hover:bg-nebula-500/50"
+            >
+              <span aria-hidden className="text-sm leading-none">
+                ▾
+              </span>
+              Toolbar
+            </button>
+            <p className="min-w-0 flex-1 truncate text-sm text-cosmos-400">
+              <span className="font-semibold text-white">{song.name}</span>
+              {` · ${slotCount} chord${slotCount === 1 ? '' : 's'}`}
+            </p>
+            <button
+              type="button"
+              onClick={isPlaying ? stop : play}
+              disabled={slotCount === 0}
+              className="flex h-7 shrink-0 items-center rounded-lg bg-nebula-600 px-3 text-sm font-semibold text-white transition hover:bg-nebula-500 disabled:cursor-not-allowed disabled:bg-cosmos-800 disabled:text-cosmos-600"
+            >
+              {isPlaying ? '■ Stop' : '▶ Play'}
+            </button>
           </div>
         ) : (
           <>
@@ -648,6 +691,21 @@ export function SequencePanel({
                   className="flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
                 >
                   Notebook
+                </button>
+              )}
+              {onToggleToolbar && (
+                <button
+                  type="button"
+                  aria-expanded
+                  onClick={onToggleToolbar}
+                  aria-label="Hide the sequence toolbar"
+                  title="Hide the toolbar for a taller sequence view"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+                >
+                  <span aria-hidden className="text-xs leading-none">
+                    ▴
+                  </span>
+                  Collapse
                 </button>
               )}
             </div>
@@ -795,6 +853,9 @@ export function SequencePanel({
             <div className="flex flex-wrap items-stretch gap-3">
               {section.bars.map((bar, barIndex) => {
                 const steps = barSteps(bar)
+                const canInsertInBar =
+                  bar.slots[bar.slots.length - 1] === null ||
+                  bar.slots.length < MAX_STEPS_PER_MEASURE
                 const showMeasureLabel =
                   !false ||
                   song.sections.some((item) => item.bars.length > 1) ||
@@ -891,13 +952,13 @@ export function SequencePanel({
                             aria-expanded={!bar.collapsed}
                             aria-label={
                               bar.collapsed
-                                ? `Expand group ${barIndex + 1}`
-                                : `Collapse group ${barIndex + 1}`
+                                ? `Expand ${barLabel(bar, barIndex)}`
+                                : `Collapse ${barLabel(bar, barIndex)}`
                             }
                             title={
                               bar.collapsed
-                                ? `Expand group ${barIndex + 1}`
-                                : `Collapse group ${barIndex + 1}`
+                                ? `Expand ${barLabel(bar, barIndex)}`
+                                : `Collapse ${barLabel(bar, barIndex)}`
                             }
                             className="inline-flex items-center gap-1.5 rounded-lg border border-nebula-400/80 bg-nebula-600/30 px-2.5 py-1 text-xs font-semibold tracking-wide text-white shadow-[0_0_0_1px_rgba(79,108,255,0.25)] transition hover:border-nebula-300 hover:bg-nebula-500/50"
                           >
@@ -919,15 +980,23 @@ export function SequencePanel({
                               <span className="h-1 w-1 rounded-full bg-current" />
                             </span>
                           )}
-                          <p className="text-[11px] font-semibold tracking-wide text-cosmos-400 uppercase">
-                            Group {barIndex + 1}
-                          </p>
+                          <input
+                            value={bar.name ?? ''}
+                            placeholder={`Group ${barIndex + 1}`}
+                            onChange={(event) =>
+                              onRenameGroup(bar.id, event.target.value)
+                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Group ${barIndex + 1} name`}
+                            className="w-32 rounded-md border border-cosmos-700 bg-cosmos-900 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-white outline-none placeholder:text-cosmos-500 focus:border-nebula-500"
+                          />
                           {canPlayFromMeasure && (
                             <button
                               type="button"
                               onClick={() => playFromMeasure(bar.id)}
-                              aria-label={`Play from group ${barIndex + 1}`}
-                              title={`Play from group ${barIndex + 1}`}
+                              aria-label={`Play from ${barLabel(bar, barIndex)}`}
+                              title={`Play from ${barLabel(bar, barIndex)}`}
                               className="rounded-md px-1.5 py-0.5 text-[11px] text-cosmos-400 transition hover:bg-nebula-600/20 hover:text-white"
                             >
                               ▶
@@ -940,14 +1009,14 @@ export function SequencePanel({
                           <MeasureStepsControl
                             steps={steps}
                             measureId={bar.id}
-                            measureIndex={barIndex}
+                            groupLabel={barLabel(bar, barIndex)}
                             onChange={(next) => onSetGroupSteps(bar.id, next)}
                           />
                           <button
                             type="button"
                             onClick={() => onDuplicateGroup(section.id, bar.id)}
-                            aria-label={`Copy group ${barIndex + 1}`}
-                            title={`Copy group ${barIndex + 1}`}
+                            aria-label={`Copy ${barLabel(bar, barIndex)}`}
+                            title={`Copy ${barLabel(bar, barIndex)}`}
                             className="ml-1 text-[11px] text-cosmos-400 transition hover:text-white"
                           >
                             ⧉
@@ -956,7 +1025,7 @@ export function SequencePanel({
                             <button
                               type="button"
                               onClick={() => onRemoveGroup(section.id, bar.id)}
-                              aria-label={`Remove group ${barIndex + 1}`}
+                              aria-label={`Remove ${barLabel(bar, barIndex)}`}
                               className="text-[11px] text-cosmos-500 transition hover:text-red-400"
                             >
                               ✕
@@ -1098,6 +1167,9 @@ export function SequencePanel({
                             })
                           }}
                           onRemove={() => onRemoveSlot(location)}
+                          canInsert={canInsertInBar}
+                          onInsert={(side) => onInsertSlot(location, side)}
+                          onRemoveStep={() => onRemoveStep(location)}
                           onDuplicate={() => onDuplicateSlot(location)}
                           onNoteChange={(note) => onSetSlotNote(location, note)}
                           onBeatsChange={(beats) => onSetSlotBeats(location, beats)}
@@ -1262,6 +1334,9 @@ interface SlotCellProps {
   onSelect: () => void
   onPreview: () => void
   onRemove: () => void
+  canInsert: boolean
+  onInsert: (side: 'before' | 'after') => void
+  onRemoveStep: () => void
   onDuplicate: () => void
   onNoteChange: (note: string) => void
   onBeatsChange: (beats: number) => void
@@ -1307,6 +1382,9 @@ function SlotCell({
   onSelect,
   onPreview,
   onRemove,
+  canInsert,
+  onInsert,
+  onRemoveStep,
   onDuplicate,
   onNoteChange,
   onBeatsChange,
@@ -1458,6 +1536,15 @@ function SlotCell({
           : ''
       }`}
     >
+      {!presenting && (
+        <RemoveStepButton
+          target={slot ? chordName : 'this empty step'}
+          onRemoveStep={onRemoveStep}
+          onDragEnter={allowDrop}
+          onDragOver={allowDrop}
+          onDrop={handleDrop}
+        />
+      )}
       {slot ? (
         <>
           {romanLabel ? (
@@ -1468,6 +1555,16 @@ function SlotCell({
               {romanBadge(romanLabel)}
             </span>
           ) : null}
+          {!presenting && (
+            <InsertSlotButtons
+              chordName={chordName}
+              canInsert={canInsert}
+              onInsert={onInsert}
+              onDragEnter={allowDrop}
+              onDragOver={allowDrop}
+              onDrop={handleDrop}
+            />
+          )}
           <div
             className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 flex-col items-center justify-center text-cosmos-200`}
           >
@@ -1670,7 +1767,7 @@ function SlotCell({
                 onDrop={handleDrop}
                 placeholder="Note"
                 aria-label={`Note for ${chordName}`}
-                className="mt-1.5 w-full bg-transparent text-xs text-cosmos-300 outline-none placeholder:text-cosmos-600"
+                className="mt-2 min-h-[2.25rem] w-full min-w-[7rem] rounded-lg border border-cosmos-700/70 bg-cosmos-950/60 px-2 py-1.5 text-xs text-cosmos-300 outline-none placeholder:text-cosmos-600 focus:border-nebula-500"
               />
             </>
           )}
@@ -1937,6 +2034,104 @@ function sectionMeta(song: Song): string {
   }`
 }
 
+/**
+ * Shared top offset so the corner controls line up across every card,
+ * whether or not the card shows a roman numeral above them.
+ */
+const SLOT_CORNER_TOP = 'top-[1.55rem]'
+
+function InsertSlotButtons({
+  chordName,
+  canInsert,
+  onInsert,
+  onDragEnter,
+  onDragOver,
+  onDrop,
+}: {
+  chordName: string
+  canInsert: boolean
+  onInsert: (side: 'before' | 'after') => void
+  onDragEnter: SlotDragHandler
+  onDragOver: SlotDragHandler
+  onDrop: (event: {
+    preventDefault: () => void
+    stopPropagation: () => void
+    dataTransfer: DataTransfer
+  }) => void
+}) {
+  const sides: { side: 'before' | 'after'; glyph: string; word: string }[] = [
+    { side: 'before', glyph: '◀+', word: 'before' },
+    { side: 'after', glyph: '+▶', word: 'after' },
+  ]
+  return (
+    <div
+      className={`absolute left-2 ${SLOT_CORNER_TOP} z-10 flex items-center gap-1`}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {sides.map(({ side, glyph, word }) => (
+        <button
+          key={side}
+          type="button"
+          disabled={!canInsert}
+          onClick={() => onInsert(side)}
+          aria-label={`Insert an empty step ${word} ${chordName}`}
+          title={
+            canInsert
+              ? `Insert an empty step ${word} ${chordName}`
+              : `This group is full — raise its chord count to insert ${word} ${chordName}`
+          }
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs leading-none text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          {glyph}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function RemoveStepButton({
+  target,
+  onRemoveStep,
+  onDragEnter,
+  onDragOver,
+  onDrop,
+}: {
+  target: string
+  onRemoveStep: () => void
+  onDragEnter: SlotDragHandler
+  onDragOver: SlotDragHandler
+  onDrop: (event: {
+    preventDefault: () => void
+    stopPropagation: () => void
+    dataTransfer: DataTransfer
+  }) => void
+}) {
+  return (
+    <div
+      className={`absolute right-2 ${SLOT_CORNER_TOP} z-10 flex items-center`}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <button
+        type="button"
+        onClick={onRemoveStep}
+        aria-label={`Remove ${target} and close the gap`}
+        title={`Remove ${target} and pull the later chords back`}
+        className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs leading-none text-cosmos-300 transition hover:border-red-400 hover:text-red-400"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 function FretExtendButtons({
   chordSymbol,
   edge,
@@ -1983,12 +2178,12 @@ function FretExtendButtons({
 function MeasureStepsControl({
   steps,
   measureId,
-  measureIndex,
+  groupLabel,
   onChange,
 }: {
   steps: number
   measureId: string
-  measureIndex: number
+  groupLabel: string
   onChange: (steps: number) => void
 }) {
   const commit = (raw: string) => {
@@ -2006,7 +2201,7 @@ function MeasureStepsControl({
       </label>
       <button
         type="button"
-        aria-label={`Fewer chords in group ${measureIndex + 1}`}
+        aria-label={`Fewer chords in ${groupLabel}`}
         disabled={steps <= MIN_STEPS_PER_MEASURE}
         onClick={() => onChange(steps - 1)}
         className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
@@ -2024,12 +2219,12 @@ function MeasureStepsControl({
         onKeyDown={(event) => {
           if (event.key === 'Enter') event.currentTarget.blur()
         }}
-        aria-label={`Chords in group ${measureIndex + 1}`}
+        aria-label={`Chords in ${groupLabel}`}
         className="w-12 rounded-md border border-cosmos-700 bg-cosmos-850 px-1 py-0.5 text-center text-xs tabular-nums text-white outline-none focus:border-nebula-500"
       />
       <button
         type="button"
-        aria-label={`More chords in group ${measureIndex + 1}`}
+        aria-label={`More chords in ${groupLabel}`}
         disabled={steps >= MAX_STEPS_PER_MEASURE}
         onClick={() => onChange(steps + 1)}
         className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"

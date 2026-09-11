@@ -120,6 +120,8 @@ export interface HighlightedNote {
 export interface Bar {
   id: string
   slots: (SequenceSlot | null)[]
+  /** Optional label; blank falls back to "Group N". */
+  name?: string
   /** Tonic of this group's progression builder. */
   keyRoot?: KeyCenter
   /** Mode of this group's progression builder. */
@@ -184,6 +186,12 @@ export function clampSteps(value: unknown): number {
 
 export function barSteps(bar: Bar): number {
   return clampSteps(bar.slots.length)
+}
+
+/** Custom group title, or "Group N" when unnamed. */
+export function barLabel(bar: Pick<Bar, 'name'>, index: number): string {
+  const name = bar.name?.trim()
+  return name ? name : `Group ${index + 1}`
 }
 
 export function lastBarSteps(song: Song, sectionId?: string): number {
@@ -398,6 +406,7 @@ export function cloneBar(bar: Bar): Bar {
   return {
     id: newId(),
     slots: bar.slots.map((slot) => (slot ? cloneSlot(slot) : null)),
+    name: bar.name,
     keyRoot: bar.keyRoot,
     mode: bar.mode,
     collapsed: bar.collapsed,
@@ -454,6 +463,14 @@ export function setBarCollapsed(
     ...bar,
     collapsed: collapsed || undefined,
   }))
+}
+
+export function setBarName(song: Song, barId: string, name: string): Song {
+  return mapBar(song, barId, (bar) => {
+    const next = name.length > 0 ? name : undefined
+    if (bar.name === next) return bar
+    return { ...bar, name: next }
+  })
 }
 
 function copiedSectionName(name: string, existing: string[]): string {
@@ -742,6 +759,61 @@ export function placeSlot(
     slots[location.slotIndex] = slot
     return { ...bar, slots }
   })
+}
+
+/**
+ * Opens an empty step beside an existing one, pushing later chords along.
+ * Reuses a trailing empty step when there is one so the group only widens
+ * when it has to. Null when the group is already at its step limit.
+ */
+export function insertSlotAt(
+  song: Song,
+  location: SlotLocation,
+  side: 'before' | 'after'
+): { song: Song; location: SlotLocation } | null {
+  const bar = findBar(song, location.barId)
+  if (!bar) return null
+  const at = side === 'after' ? location.slotIndex + 1 : location.slotIndex
+  if (at < 0 || at > bar.slots.length) return null
+
+  const slots = [...bar.slots]
+  slots.splice(at, 0, null)
+  if (slots[slots.length - 1] === null) slots.pop()
+  else if (slots.length > MAX_STEPS_PER_MEASURE) return null
+
+  return {
+    song: mapBar(song, location.barId, (current) => ({ ...current, slots })),
+    location: { ...location, slotIndex: at },
+  }
+}
+
+/**
+ * Drops a step out of its group, pulling the later chords back one place.
+ * Clears the chord in place when the group is down to its last step.
+ */
+export function removeStepAt(song: Song, location: SlotLocation): Song {
+  const bar = findBar(song, location.barId)
+  if (!bar) return song
+  if (location.slotIndex < 0 || location.slotIndex >= bar.slots.length) {
+    return song
+  }
+  if (bar.slots.length <= MIN_STEPS_PER_MEASURE) {
+    return bar.slots[location.slotIndex] === null
+      ? song
+      : placeSlot(song, location, null)
+  }
+  const slots = bar.slots.filter((_, index) => index !== location.slotIndex)
+  return mapBar(song, location.barId, (current) => ({ ...current, slots }))
+}
+
+/** Whether `insertSlotAt` would succeed for this step. */
+export function canInsertSlotAt(song: Song, location: SlotLocation): boolean {
+  const bar = findBar(song, location.barId)
+  if (!bar) return false
+  return (
+    bar.slots[bar.slots.length - 1] === null ||
+    bar.slots.length < MAX_STEPS_PER_MEASURE
+  )
 }
 
 export function parseStrumPattern(value: string | undefined): StrumStroke[] {
@@ -1185,6 +1257,8 @@ function normalizeBar(value: unknown, fallbackSteps: number): Bar | null {
   return {
     id: typeof raw.id === 'string' ? raw.id : newId(),
     slots: resizeBarSlots(slots, steps),
+    name:
+      typeof raw.name === 'string' && raw.name.trim() ? raw.name : undefined,
     keyRoot: isKeyCenter(raw.keyRoot) ? raw.keyRoot : undefined,
     mode: isModeId(raw.mode) ? raw.mode : undefined,
     collapsed: raw.collapsed === true ? true : undefined,
@@ -1349,6 +1423,17 @@ export function songForJsonExport(song: Song): Song {
   }
 }
 
+/** Library JSON: every sequence, chords and outlines, not microphone takes. */
+export function libraryForJsonExport(songs: Song[]): {
+  format: 'chord-cosmos.library.v1'
+  songs: Song[]
+} {
+  return {
+    format: 'chord-cosmos.library.v1',
+    songs: songs.map(songForJsonExport),
+  }
+}
+
 export function exportSong(song: Song): string {
   const header = [
     song.name,
@@ -1363,8 +1448,11 @@ export function exportSong(song: Song): string {
       const cells = bar.slots.map((slot) =>
         slot ? `${displayChordSymbol(slot.chordSymbol)} ${slot.tab}` : '—'
       )
+      const groupName = bar.name?.trim()
       lines.push(
-        `  m${barIndex + 1} (${bar.slots.length}). ${cells.join('  |  ')}`
+        groupName
+          ? `  m${barIndex + 1} ${groupName} (${bar.slots.length}). ${cells.join('  |  ')}`
+          : `  m${barIndex + 1} (${bar.slots.length}). ${cells.join('  |  ')}`
       )
       bar.slots.forEach((slot) => {
         if (slot?.note) lines.push(`      ${displayChordSymbol(slot.chordSymbol)}: ${slot.note}`)

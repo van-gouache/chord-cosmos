@@ -11,6 +11,8 @@ export interface AppPrefs {
   showLickOutline: boolean
   showCircleOfFifths: boolean
   muteBuildFretClicks: boolean
+  /** Hides the sequence toolbar so the grid gets the whole panel. */
+  sequenceToolbarCollapsed: boolean
   notebookStyle: NotebookStyle
   audioInputId: string
 }
@@ -20,6 +22,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   showLickOutline: false,
   showCircleOfFifths: false,
   muteBuildFretClicks: false,
+  sequenceToolbarCollapsed: false,
   notebookStyle: DEFAULT_NOTEBOOK_STYLE,
   audioInputId: '',
 }
@@ -53,6 +56,10 @@ export function loadPrefs(): AppPrefs {
       typeof raw?.muteBuildFretClicks === 'boolean'
         ? raw.muteBuildFretClicks
         : DEFAULT_PREFS.muteBuildFretClicks,
+    sequenceToolbarCollapsed:
+      typeof raw?.sequenceToolbarCollapsed === 'boolean'
+        ? raw.sequenceToolbarCollapsed
+        : DEFAULT_PREFS.sequenceToolbarCollapsed,
     notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
     audioInputId: typeof raw?.audioInputId === 'string' ? raw.audioInputId : '',
   }

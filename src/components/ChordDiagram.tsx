@@ -136,7 +136,7 @@ export function ChordDiagram({
   const box = useMemo(
     () =>
       diagramFretWindow(fingering, {
-        highlightedFrets: highlightedNotes?.map((note) => note.fret),
+        highlightedFrets: highlightedNotes?.map((note) => note.fret) ?? [],
         extendLow,
         extendHigh,
         ...(isLine ? { tightHighlights: true, minRows: 1 } : {}),
@@ -176,6 +176,14 @@ export function ChordDiagram({
       .filter((note) => !occupied.has(cellKey(note.string, note.fret)))
       .map((note) => cellKey(note.string, note.fret))
   )
+  const extraMarks = outlined
+  const visibleExtraMarks = [...extraMarks].filter((key) => {
+    const fret = Number(key.split(':')[1])
+    // Open strings sit in the marker row above the box, which is drawn even
+    // when the window starts up the neck.
+    if (fret === 0) return true
+    return fret >= startFret && fret < startFret + fretRows
+  })
   const interactive = Boolean(onToggleNote)
   const rootPc = rootPcOverride ?? rootPitchClass(fingering, shape)
   const noteHits: NoteHit[] = []
@@ -376,7 +384,7 @@ export function ChordDiagram({
       {!isLine &&
         Array.from({ length: STRING_COUNT }, (_, i) => {
         const fret = fingering.strings[i]
-        if (fret === null && outlined.has(cellKey(i, 0))) return null
+        if (fret === null && extraMarks.has(cellKey(i, 0))) return null
         if (fret === null) {
           const r = s.markerFont * 0.32
           return (
@@ -445,7 +453,7 @@ export function ChordDiagram({
             )
           )}
 
-      {[...outlined].map((key) => {
+      {visibleExtraMarks.map((key) => {
         const [stringIndex, fret] = key.split(':').map(Number)
         return renderOutline(stringIndex, fret)
       })}

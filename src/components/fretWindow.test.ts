@@ -99,6 +99,19 @@ describe('chord diagram fret window', () => {
     expect(towardBody.canExtendHigh).toBe(true)
   })
 
+  it('keeps a chord box tight when an open string is outlined', () => {
+    const chord = parseChord('E-7')
+    const shape = buildShape(chord.tones, V_GROUPS[1], 0)
+    const highShape = findFingerings(shape, chord.rootPc).find(
+      (f) => f.lowestFret >= 7 && !f.notes.some((n) => n.fret === 0)
+    )
+    expect(highShape).toBeDefined()
+    const base = fretWindow(highShape!)
+    const window = diagramFretWindow(highShape!, { highlightedFrets: [0] })
+    expect(window.startFret).toBe(base.startFret)
+    expect(window.fretRows).toBe(base.fretRows)
+  })
+
   it('crops a line diagram to the frets that are actually used', () => {
     const window = diagramFretWindow(emptyLineFingering(), {
       highlightedFrets: [7, 8, 10],

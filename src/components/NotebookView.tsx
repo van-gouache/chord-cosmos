@@ -17,6 +17,7 @@ import {
 } from '../state/notebook'
 import {
   hydrateSlot,
+  barLabel,
   locationsEqual,
   type SequenceSlot,
   type SlotLocation,
@@ -132,7 +133,7 @@ export function NotebookView({
                 <div key={bar.id} className="notebook-group">
                   <div className="notebook-group-head">
                     <span className="notebook-group-label">
-                      Group {barIndex + 1}
+                      {barLabel(bar, barIndex)}
                     </span>
                     {bar.keyRoot ? (
                       <span className="notebook-group-key">

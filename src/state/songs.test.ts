@@ -11,12 +11,14 @@ import {
   duplicateSection,
   setSectionCollapsed,
   setBarCollapsed,
+  setBarName,
   moveBar,
   cloneSong,
   countSlots,
   createSong,
   emptySection,
   songForJsonExport,
+  libraryForJsonExport,
   exportSong,
   firstEmptyLocation,
   firstEmptyInBar,
@@ -32,6 +34,9 @@ import {
   packEntriesIntoSection,
   parseStrumPattern,
   hydrateSlot,
+  insertSlotAt,
+  canInsertSlotAt,
+  removeStepAt,
   patchSlot,
   placeSlot,
   toggleHighlightedNote,
@@ -284,6 +289,92 @@ describe('song grid helpers', () => {
     expect(setBarSteps(song, barId, 0).sections[0].bars[0].slots).toHaveLength(1)
     expect(setBarSteps(song, barId, 99).sections[0].bars[0].slots).toHaveLength(32)
     expect(setBarSteps(song, barId, 3).sections[0].bars[0].slots).toHaveLength(3)
+  })
+
+  it('inserts an empty step between chords, taking up a trailing gap first', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7'])
+    const bar = song.sections[0].bars[0]
+    const location = { sectionId: song.sections[0].id, barId: bar.id, slotIndex: 1 }
+
+    const before = insertSlotAt(song, location, 'before')
+    expect(before?.location.slotIndex).toBe(1)
+    expect(
+      before?.song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', null, 'A7', 'DΔ7'])
+
+    const after = insertSlotAt(song, location, 'after')
+    expect(after?.location.slotIndex).toBe(2)
+    expect(
+      after?.song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', 'A7', null, 'DΔ7'])
+  })
+
+  it('widens a full group by one step to make room for an insert', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7'])
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const opened = insertSlotAt(song, location, 'after')
+    expect(
+      opened?.song.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', null, 'A7', 'DΔ7', 'GΔ7'])
+  })
+
+  it('refuses to insert once a group holds the maximum number of chords', () => {
+    const filled = {
+      ...createSong('Full'),
+      sections: [
+        packEntriesIntoSection(
+          Array.from({ length: 32 }, (_, i) =>
+            slot({ id: `f${i}`, chordSymbol: 'CΔ7' })
+          ),
+          'A',
+          32
+        ),
+      ],
+    }
+    const location = {
+      sectionId: filled.sections[0].id,
+      barId: filled.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    expect(canInsertSlotAt(filled, location)).toBe(false)
+    expect(insertSlotAt(filled, location, 'after')).toBeNull()
+
+    const roomy = songWithSlots(['Em7', 'A7'])
+    const roomyLocation = {
+      sectionId: roomy.sections[0].id,
+      barId: roomy.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    expect(canInsertSlotAt(roomy, roomyLocation)).toBe(true)
+  })
+
+  it('removes a step and pulls the later chords back', () => {
+    const song = songWithSlots(['Em7', 'A7', 'DΔ7', 'GΔ7'])
+    const bar = song.sections[0].bars[0]
+    const closed = removeStepAt(song, {
+      sectionId: song.sections[0].id,
+      barId: bar.id,
+      slotIndex: 1,
+    })
+    expect(
+      closed.sections[0].bars[0].slots.map((s) => s?.chordSymbol ?? null)
+    ).toEqual(['Em7', 'DΔ7', 'GΔ7'])
+  })
+
+  it('clears the chord instead of emptying a one-step group', () => {
+    const song = songWithSlots(['Em7'])
+    const narrowed = setBarSteps(song, song.sections[0].bars[0].id, 1)
+    const bar = narrowed.sections[0].bars[0]
+    const closed = removeStepAt(narrowed, {
+      sectionId: narrowed.sections[0].id,
+      barId: bar.id,
+      slotIndex: 0,
+    })
+    expect(closed.sections[0].bars[0].slots).toEqual([null])
   })
 
   it('sizes each step so a measure still lasts four beats', () => {
@@ -562,6 +653,19 @@ describe('song grid helpers', () => {
     expect(copy.sections[0].bars[1].collapsed).toBeUndefined()
   })
 
+  it('names a group and keeps the title through save, copy, and export', () => {
+    const song = createSong('Demo')
+    const bar = song.sections[0].bars[0]
+    const named = setBarName(song, bar.id, 'Turnaround')
+    expect(named.sections[0].bars[0].name).toBe('Turnaround')
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(named)))
+    expect(roundTrip?.sections[0].bars[0].name).toBe('Turnaround')
+    const copy = duplicateBar(named, named.sections[0].id, bar.id)
+    expect(copy.sections[0].bars[1].name).toBe('Turnaround')
+    expect(exportSong(named)).toContain('m1 Turnaround (4).')
+    expect(setBarName(named, bar.id, '').sections[0].bars[0].name).toBeUndefined()
+  })
+
   it('swaps two measures in the same section', () => {
     const song = songWithSlots([
       'Em7',
@@ -632,6 +736,7 @@ describe('song grid helpers', () => {
           bars: [
             {
               ...bar,
+              name: 'Intro',
               slots: bar.slots.map((s, i) =>
                 i === 0 && s ? { ...s, note: 'bass on 1' } : s
               ),
@@ -643,7 +748,7 @@ describe('song grid helpers', () => {
     const text = exportSong(song)
     expect(text).toContain('Tune')
     expect(text).toContain('120 bpm')
-    expect(text).toContain('m1 (4).')
+    expect(text).toContain('m1 Intro (4).')
     expect(text).toContain('[Verse]')
     expect(text).toContain('keep it sparse')
     expect(text).toContain('E-7')
@@ -666,6 +771,18 @@ describe('song grid helpers', () => {
     })
     expect(JSON.stringify(songForJsonExport(withTake))).not.toContain('lineAudio')
     expect(withTake.sections[0].bars[0].slots[0]?.lineAudio).toBeDefined()
+  })
+
+  it('packs every sequence into a library backup that imports additively', () => {
+    const first = songWithSlots(['Em7'])
+    first.name = 'Autumn'
+    const second = createSong('Blues')
+    const library = libraryForJsonExport([first, second])
+    expect(library.format).toBe('chord-cosmos.library.v1')
+    expect(library.songs).toHaveLength(2)
+    expect(JSON.stringify(library)).not.toContain('lineAudio')
+    const read = readImportedSongs(library)
+    expect(read.map((song) => song.name)).toEqual(['Autumn', 'Blues'])
   })
 
   it('parses and formats strum patterns', () => {
