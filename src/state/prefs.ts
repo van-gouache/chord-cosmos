@@ -10,6 +10,7 @@ export interface AppPrefs {
   showForwardTargets: boolean
   showLickOutline: boolean
   showCircleOfFifths: boolean
+  muteBuildFretClicks: boolean
   notebookStyle: NotebookStyle
   audioInputId: string
 }
@@ -18,6 +19,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   showForwardTargets: true,
   showLickOutline: false,
   showCircleOfFifths: false,
+  muteBuildFretClicks: false,
   notebookStyle: DEFAULT_NOTEBOOK_STYLE,
   audioInputId: '',
 }
@@ -47,6 +49,10 @@ export function loadPrefs(): AppPrefs {
       typeof raw?.showCircleOfFifths === 'boolean'
         ? raw.showCircleOfFifths
         : DEFAULT_PREFS.showCircleOfFifths,
+    muteBuildFretClicks:
+      typeof raw?.muteBuildFretClicks === 'boolean'
+        ? raw.muteBuildFretClicks
+        : DEFAULT_PREFS.muteBuildFretClicks,
     notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
     audioInputId: typeof raw?.audioInputId === 'string' ? raw.audioInputId : '',
   }

@@ -1021,12 +1021,15 @@ function mapBar(song: Song, barId: string, change: (bar: Bar) => Bar): Song {
 export function setBarHarmony(
   song: Song,
   barId: string,
-  harmony: { keyRoot: KeyCenter; mode?: ModeId }
+  harmony: { keyRoot: KeyCenter | null; mode?: ModeId }
 ): Song {
   return mapBar(song, barId, (bar) => ({
     ...bar,
-    keyRoot: harmony.keyRoot,
-    mode: harmony.mode ?? bar.mode ?? DEFAULT_MODE,
+    keyRoot: harmony.keyRoot ?? undefined,
+    mode:
+      harmony.keyRoot == null
+        ? bar.mode
+        : (harmony.mode ?? bar.mode ?? DEFAULT_MODE),
   }))
 }
 

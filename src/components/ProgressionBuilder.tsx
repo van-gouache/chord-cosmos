@@ -1,3 +1,4 @@
+import { KeyCenterSuggestions } from './KeyCenterSuggestions'
 import {
   DEFAULT_MODE,
   KEY_CENTERS,
@@ -16,7 +17,8 @@ interface Props {
   keyRoot?: string
   mode?: ModeId
   selectedId?: string | null
-  onHarmonyChange: (harmony: { keyRoot: KeyCenter; mode: ModeId }) => void
+  chordSymbols?: string[]
+  onHarmonyChange: (harmony: { keyRoot: KeyCenter | null; mode: ModeId }) => void
   onPickStep: (step: ProgressionStep) => void
 }
 
@@ -24,6 +26,7 @@ export function ProgressionBuilder({
   keyRoot,
   mode = DEFAULT_MODE,
   selectedId,
+  chordSymbols = [],
   onHarmonyChange,
   onPickStep,
 }: Props) {
@@ -48,15 +51,17 @@ export function ProgressionBuilder({
             value={key ?? ''}
             aria-label="Key center"
             onChange={(event) => {
-              const next = event.target.value as KeyCenter
-              if (!KEY_CENTERS.includes(next)) return
-              onHarmonyChange({ keyRoot: next, mode })
+              const next = event.target.value
+              if (!next) {
+                onHarmonyChange({ keyRoot: null, mode })
+                return
+              }
+              if (!KEY_CENTERS.includes(next as KeyCenter)) return
+              onHarmonyChange({ keyRoot: next as KeyCenter, mode })
             }}
             className={selectClass}
           >
-            <option value="" disabled>
-              Choose
-            </option>
+            <option value="">None</option>
             {KEY_CENTERS.map((root) => (
               <option key={root} value={root}>
                 {root}
@@ -131,9 +136,16 @@ export function ProgressionBuilder({
           ))}
         </div>
       ) : (
-        <p className="text-[11px] text-cosmos-500">
-          Choose a key center to see diatonic and non-diatonic steps.
-        </p>
+        <div className="space-y-1.5">
+          <KeyCenterSuggestions
+            chordSymbols={chordSymbols}
+            onPick={onHarmonyChange}
+          />
+          <p className="text-[11px] text-cosmos-500">
+            Choose a key center to see diatonic and non-diatonic steps, or
+            leave it as None.
+          </p>
+        </div>
       )}
     </div>
   )

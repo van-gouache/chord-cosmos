@@ -511,7 +511,7 @@ export function useSongs() {
   const setBarHarmonyBy = useCallback(
     (
       barId: string,
-      harmony: { keyRoot: KeyCenter; mode?: ModeId }
+      harmony: { keyRoot: KeyCenter | null; mode?: ModeId }
     ) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => setBarHarmony(song, barId, harmony))

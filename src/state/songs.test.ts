@@ -99,6 +99,9 @@ describe('song grid helpers', () => {
     expect(roundTrip).not.toBeNull()
     expect(roundTrip!.sections[0].bars[0].keyRoot).toBe('Bb')
     expect(firstEmptyInBar(next, song.sections[0].id, bar.id)?.slotIndex).toBe(0)
+    const cleared = setBarHarmony(next, bar.id, { keyRoot: null })
+    expect(cleared.sections[0].bars[0].keyRoot).toBeUndefined()
+    expect(cleared.sections[0].bars[0].mode).toBe('ionian')
   })
 
   it('persists a progression roman numeral on a chord slot', () => {

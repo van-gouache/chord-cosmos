@@ -24,6 +24,7 @@ import {
   toggleLineNote,
   type LineNote,
 } from '../theory/lineOutline'
+import { loadPrefs, updatePrefs } from '../state/prefs'
 import { slotFromLineNotes, type SequenceSlot } from '../state/songs'
 import type { Voicing } from '../theory/voicings'
 
@@ -46,6 +47,9 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
   const [rootTouched, setRootTouched] = useState(false)
   const [page, setPage] = useState(0)
   const [lineOpen, setLineOpen] = useState(false)
+  const [muteFretClicks, setMuteFretClicks] = useState(
+    () => loadPrefs().muteBuildFretClicks
+  )
 
   const startFret = page * FRETS_PER_PAGE + 1
   const endFret = Math.min(startFret + FRETS_PER_PAGE - 1, MAX_PLAYABLE_FRET)
@@ -85,13 +89,13 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
     if (mode === 'line') {
       const next = toggleLineNote(lineNotes, { string, fret }) ?? []
       setLineNotes(next)
-      playNotes([STANDARD_TUNING[string] + fret])
+      if (!muteFretClicks) playNotes([STANDARD_TUNING[string] + fret])
       return
     }
     const current = strings[string]
     const next = current === fret ? null : fret
     setString(string, next)
-    if (next !== null) {
+    if (next !== null && !muteFretClicks) {
       playNotes([STANDARD_TUNING[string] + next])
     }
   }
@@ -171,7 +175,21 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
         <p className="text-xs font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
           Fretboard
         </p>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          <label className="mr-1 flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-semibold text-cosmos-400">
+            <input
+              type="checkbox"
+              checked={muteFretClicks}
+              aria-label="Mute playback when clicking frets"
+              onChange={(event) => {
+                const next = event.target.checked
+                setMuteFretClicks(next)
+                updatePrefs({ muteBuildFretClicks: next })
+              }}
+              className="accent-nebula-500"
+            />
+            Mute clicks
+          </label>
           {mode === 'line' && (
             <button
               type="button"

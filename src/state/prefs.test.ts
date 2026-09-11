@@ -32,10 +32,10 @@ describe('app prefs', () => {
     expect(loadPrefs().showForwardTargets).toBe(false)
   })
 
-  it('keeps the circle of fifths off until enabled', () => {
-    expect(loadPrefs().showCircleOfFifths).toBe(false)
-    updatePrefs({ showCircleOfFifths: true })
-    expect(loadPrefs().showCircleOfFifths).toBe(true)
+  it('keeps build fret clicks audible until muted', () => {
+    expect(loadPrefs().muteBuildFretClicks).toBe(false)
+    updatePrefs({ muteBuildFretClicks: true })
+    expect(loadPrefs().muteBuildFretClicks).toBe(true)
   })
 
   it('remembers notebook page style', () => {

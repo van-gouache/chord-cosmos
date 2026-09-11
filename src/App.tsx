@@ -9,6 +9,7 @@ import { VoicingPicker } from './components/VoicingPicker'
 import { unlockAudio } from './audio/player'
 import { WorkshopConfig } from './components/WorkshopConfig'
 import { CircleOfFifths } from './components/CircleOfFifths'
+import { KeyCenterSuggestions } from './components/KeyCenterSuggestions'
 import { barAt, locationExists, nextChordForWorkshop, type SlotLocation } from './state/songs'
 import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
@@ -134,6 +135,12 @@ export default function App() {
     }
     return chord?.rootName
   }, [chord?.rootName, playingSlot, songs.activeSong])
+  const voicingTargetBar = useMemo(() => {
+    const song = songs.activeSong
+    if (!song) return null
+    if (selectedSlot) return barAt(song, selectedSlot.barId)
+    return song.sections[0]?.bars[0] ?? null
+  }, [selectedSlot, songs.activeSong])
   const workshopNextChord = useMemo(() => {
     if (!chord || !songs.activeSong) return null
     return nextChordForWorkshop(songs.activeSong, chord, selectedSlot)
@@ -328,6 +335,7 @@ export default function App() {
             showLickOutline={showLickOutline}
             showCircleOfFifths={showCircleOfFifths}
             onPlayingLocationChange={setPlayingSlot}
+            workshopChordSymbol={chord?.symbol ?? input}
             notebookStyle={notebookStyle}
             onToggleNotebook={toggleNotebook}
             onNotebookStyleChange={(style) => {
@@ -466,6 +474,27 @@ export default function App() {
                     mode={workshopTab === 'triads' ? 'triads' : 'vsystem'}
                     qualityNonce={qualityNonce}
                   />
+                  {voicingTargetBar && !voicingTargetBar.keyRoot && chord ? (
+                    <div className="mt-3 rounded-lg border border-cosmos-800/80 bg-cosmos-950/50 p-2">
+                      <p className="mb-1.5 text-[11px] leading-snug text-cosmos-500">
+                        This group has no key center. Typical homes for{' '}
+                        {chord.symbol}:
+                      </p>
+                      <KeyCenterSuggestions
+                        chordSymbols={[
+                          ...voicingTargetBar.slots.flatMap((slot) =>
+                            slot && !isLineGroupId(slot.groupId)
+                              ? [slot.chordSymbol]
+                              : [],
+                          ),
+                          chord.symbol,
+                        ]}
+                        onPick={(harmony) =>
+                          songs.setBarHarmony(voicingTargetBar.id, harmony)
+                        }
+                      />
+                    </div>
+                  ) : null}
                   {showCircleOfFifths ? (
                     <div className="mt-3 rounded-lg border border-cosmos-800/80 bg-cosmos-950/50 p-2">
                       {workshopCircleKey ? (

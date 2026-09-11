@@ -130,7 +130,7 @@ interface Props {
   onSetGroupSteps: (barId: string, steps: number) => void
   onSetBarHarmony: (
     barId: string,
-    harmony: { keyRoot: KeyCenter; mode?: ModeId }
+    harmony: { keyRoot: KeyCenter | null; mode?: ModeId }
   ) => void
   onPickProgressionStep: (
     location: SlotLocation | null,
@@ -157,6 +157,7 @@ interface Props {
   notebookStyle?: NotebookStyle
   onToggleNotebook?: () => void
   onNotebookStyleChange?: (style: NotebookStyle) => void
+  workshopChordSymbol?: string
 }
 
 export function SequencePanel({
@@ -214,6 +215,7 @@ export function SequencePanel({
   notebookStyle = 'cream',
   onToggleNotebook,
   onNotebookStyleChange,
+  workshopChordSymbol,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
@@ -515,6 +517,10 @@ export function SequencePanel({
   }, [notebookMode, playingIndex])
 
   if (!song?.sections) return null
+
+  const firstUnkeyedBarId = song.sections
+    .flatMap((section) => section.bars)
+    .find((group) => !group.keyRoot)?.id
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -970,6 +976,13 @@ export function SequencePanel({
                     <ProgressionBuilder
                       keyRoot={bar.keyRoot}
                       mode={bar.mode}
+                      chordSymbols={keyHintSymbols(
+                        bar,
+                        selected?.barId === bar.id ||
+                          (!selected && bar.id === firstUnkeyedBarId)
+                          ? workshopChordSymbol
+                          : undefined,
+                      )}
                       selectedId={
                         pendingProgression?.location.barId === bar.id
                           ? pendingProgression.stepId
@@ -2155,6 +2168,20 @@ function slotVoicingLabel(slot: SequenceSlot): string {
     return `Line · ${n} note${n === 1 ? '' : 's'}`
   }
   return `${slot.groupId} · ${shortInversion(slot.inversion)}`
+}
+
+function barChordSymbols(bar: Bar): string[] {
+  return bar.slots.flatMap((slot) => {
+    if (!slot || isLineGroupId(slot.groupId)) return []
+    return [slot.chordSymbol]
+  })
+}
+
+function keyHintSymbols(bar: Bar, workshopChordSymbol?: string): string[] {
+  const symbols = barChordSymbols(bar)
+  const hint = workshopChordSymbol?.trim()
+  if (hint && !symbols.includes(hint)) symbols.push(hint)
+  return symbols
 }
 
 function groupChordSummary(bar: Bar): string {
