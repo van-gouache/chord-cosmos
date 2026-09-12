@@ -325,15 +325,10 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
-  const setLineAudio = useCallback(
-    (
-      location: SlotLocation,
-      lineAudio: SequenceSlot['lineAudio'] | undefined
-    ) => {
+  const setLineNotes = useCallback(
+    (location: SlotLocation, lineNotes: SequenceSlot['lineNotes']) => {
       if (!activeSong) return
-      updateSong(activeSong.id, (song) =>
-        patchSlot(song, location, { lineAudio })
-      )
+      updateSong(activeSong.id, (song) => patchSlot(song, location, { lineNotes }))
     },
     [activeSong, updateSong]
   )
@@ -651,7 +646,7 @@ export function useSongs() {
     setSlotBeats,
     setSlotPlayback,
     setSlotStrumPattern,
-    setLineAudio,
+    setLineNotes,
     toggleHighlight,
     extendFrets,
     shiftSlotOctave: shiftSlotOctaveBy,

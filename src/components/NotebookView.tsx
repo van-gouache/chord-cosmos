@@ -1,6 +1,7 @@
 import type { RefCallback } from 'react'
 
 import { ChordDiagram } from './ChordDiagram'
+import { LineStaff } from './LineNotation'
 import { displayChordSymbol } from '../theory/chords'
 import {
   DEFAULT_MODE,
@@ -10,7 +11,7 @@ import {
   type ModeId,
 } from '../theory/diatonic'
 import { inversionOrdinal } from '../theory/voicings'
-import { isLineGroupId } from '../theory/lineOutline'
+import { flattenLinePitches, isLineGroupId } from '../theory/lineOutline'
 import {
   NOTEBOOK_STYLES,
   type NotebookStyle,
@@ -193,9 +194,7 @@ function NotebookEntry({
         isSelected ? ' is-selected' : ''
       }`}
       onClick={() => {
-        if (!isLineGroupId(slot.groupId) || slot.lineAudio) {
-          onPreview(location, slot)
-        }
+        onPreview(location, slot)
         onSelect(location)
       }}
     >
@@ -219,17 +218,28 @@ function NotebookEntry({
           showDegrees
           kind={isLineGroupId(slot.groupId) ? 'line' : 'chord'}
           highlightedNotes={
-            isLineGroupId(slot.groupId) ? slot.lineNotes : slot.highlightedNotes
+            isLineGroupId(slot.groupId)
+              ? flattenLinePitches(slot.lineNotes)
+              : slot.highlightedNotes
           }
           extendLow={slot.extendLow}
           extendHigh={slot.extendHigh}
           className="notebook-box-diagram"
         />
       )}
+      {isLineGroupId(slot.groupId) && slot.lineNotes?.length ? (
+        <LineStaff
+          notes={slot.lineNotes}
+          rootName={keyRoot}
+          ink
+          numbered={false}
+          className="notebook-staff"
+        />
+      ) : null}
       <span className="notebook-voicing">
         {isLineGroupId(slot.groupId)
-          ? `Line · ${slot.lineNotes?.length ?? 0} note${
-              (slot.lineNotes?.length ?? 0) === 1 ? '' : 's'
+          ? `Line · ${flattenLinePitches(slot.lineNotes).length} note${
+              flattenLinePitches(slot.lineNotes).length === 1 ? '' : 's'
             }`
           : `${slot.groupId} · ${shortInversion(slot.inversion)}`}
       </span>

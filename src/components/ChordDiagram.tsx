@@ -20,7 +20,7 @@ interface Props {
   /** Draw the scale degree inside each dot. */
   showDegrees?: boolean
   /** Extra hollow markers on empty string/fret cells. */
-  highlightedNotes?: readonly { string: number; fret: number }[]
+  highlightedNotes?: readonly { string: number; fret: number; at?: number }[]
   /** Line outlines hide mutes and number notes in click order. */
   kind?: 'chord' | 'line'
   /** Pitch class used to colour outlines; defaults to the grip's root. */
@@ -176,6 +176,14 @@ export function ChordDiagram({
       .filter((note) => !occupied.has(cellKey(note.string, note.fret)))
       .map((note) => cellKey(note.string, note.fret))
   )
+  const lineIndicesByKey = new Map<string, number[]>()
+  for (const [index, note] of (highlightedNotes ?? []).entries()) {
+    const key = cellKey(note.string, note.fret)
+    const list = lineIndicesByKey.get(key) ?? []
+    const mark = note.at ?? index + 1
+    if (!list.includes(mark)) list.push(mark)
+    lineIndicesByKey.set(key, list)
+  }
   const extraMarks = outlined
   const visibleExtraMarks = [...extraMarks].filter((key) => {
     const fret = Number(key.split(':')[1])
@@ -267,6 +275,8 @@ export function ChordDiagram({
     const radius = fret === 0 ? s.dot * 0.9 : s.dot
     const tone = toneAt(rootPc, stringIndex, fret)
     if (isLine) {
+      const orders = lineIndicesByKey.get(cellKey(stringIndex, fret)) ?? []
+      const label = orders.join(',')
       return (
         <g key={`outline-${stringIndex}-${fret}`}>
           <circle
@@ -275,6 +285,22 @@ export function ChordDiagram({
             r={radius}
             className={intervalStyle(0).fill}
           />
+          {label !== '' && (
+            <text
+              x={cx}
+              y={cy}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={
+                (fret === 0 ? s.font * 0.92 : s.font) *
+                (label.length > 2 ? 0.72 : 1)
+              }
+              fontWeight={700}
+              className={intervalStyle(0).text}
+            >
+              {label}
+            </text>
+          )}
         </g>
       )
     }
@@ -474,8 +500,8 @@ export function ChordDiagram({
             type="button"
             data-highlight-note=""
             draggable={false}
-            aria-pressed={highlighted}
-            aria-label={`${highlighted ? 'Remove' : 'Add'} ${isLine ? 'line' : tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
+            aria-pressed={isLine ? undefined : highlighted}
+            aria-label={`${isLine ? 'Add' : highlighted ? 'Remove' : 'Add'} ${isLine ? 'line' : tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
             className="pointer-events-auto absolute cursor-pointer touch-manipulation rounded-full border-0 bg-transparent p-0 hover:bg-white/10"
             style={{
               left: `${((hit.cx - hit.cellW / 2) / width) * 100}%`,

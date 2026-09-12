@@ -348,6 +348,14 @@ body::after {
   color: #2a1c10;
 }
 
+.notebook-staff {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.1rem auto 0.2rem;
+  color: var(--nb-ink);
+}
+
 .notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-300,
 .notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-400,
 .notebook-page:not([data-style='night']) .notebook-box-diagram .text-cosmos-600 {

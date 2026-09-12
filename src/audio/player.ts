@@ -7,13 +7,37 @@
  * ones.
  */
 
+import { lineNoteBeats } from '../theory/lineNotation'
+import { DEFAULT_BPM } from '../state/songs'
+import { STANDARD_TUNING } from '../theory/fretboard'
+import { lineNotePitches, type LineNote } from '../theory/lineOutline'
 import { midiToFrequency } from '../theory/pitch'
-import { stopLineAudio } from './lineAudio'
 
 let context: AudioContext | null = null
 let masterGain: GainNode | null = null
 /** Voices currently sounding, so a new chord can cut off the previous one. */
 let activeVoices: { source: AudioBufferSourceNode; gain: GainNode }[] = []
+
+/** Full scale would clip a six-string strum, so "100%" stops short of 1. */
+export const MAX_MASTER_GAIN = 0.9
+export const DEFAULT_VOLUME = 0.67
+
+let volume = DEFAULT_VOLUME
+
+/** Playback level, 0 to 1. */
+export function setMasterVolume(next: number): void {
+  volume = Math.min(1, Math.max(0, Number.isFinite(next) ? next : DEFAULT_VOLUME))
+  if (!masterGain || !context) return
+  masterGain.gain.setTargetAtTime(
+    volume * MAX_MASTER_GAIN,
+    context.currentTime,
+    0.02
+  )
+}
+
+export function masterVolume(): number {
+  return volume
+}
 
 function getContext(): AudioContext {
   if (!context) {
@@ -23,7 +47,7 @@ function getContext(): AudioContext {
         .webkitAudioContext
     context = new Ctor()
     masterGain = context.createGain()
-    masterGain.gain.value = 0.6
+    masterGain.gain.value = volume * MAX_MASTER_GAIN
     masterGain.connect(context.destination)
   }
   return context
@@ -86,7 +110,6 @@ export function stopAll(): void {
     }
   }
   activeVoices = []
-  stopLineAudio()
 }
 
 export interface PlayOptions {
@@ -149,6 +172,27 @@ export function playNotes(midiNotes: number[], options: PlayOptions = {}): void 
 /** Plays notes one at a time, low to high. */
 export function playArpeggio(midiNotes: number[], noteGap = 0.16): void {
   playNotes(midiNotes, { strumDelay: noteGap, duration: 2.2 })
+}
+
+/** Plays a written line in click order, using each note's duration. */
+export function playLineMelody(notes: readonly LineNote[], bpm = DEFAULT_BPM): void {
+  if (notes.length === 0) return
+  const beat = 60 / Math.max(40, bpm)
+  let offset = 0
+  notes.forEach((note, index) => {
+    const midi = lineNotePitches(note).map(
+      (pitch) => STANDARD_TUNING[pitch.string] + pitch.fret
+    )
+    const seconds = lineNoteBeats(note) * beat
+    playNotes(midi, {
+      interrupt: index === 0,
+      startOffset: offset,
+      duration: Math.max(0.4, seconds + 0.2),
+      velocity: 1,
+      strumDelay: 0,
+    })
+    offset += seconds
+  })
 }
 
 export interface BeatPlayOptions {

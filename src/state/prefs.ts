@@ -1,3 +1,4 @@
+import { DEFAULT_VOLUME } from '../audio/player'
 import {
   DEFAULT_NOTEBOOK_STYLE,
   notebookStyleFromUnknown,
@@ -14,7 +15,8 @@ export interface AppPrefs {
   /** Hides the sequence toolbar so the grid gets the whole panel. */
   sequenceToolbarCollapsed: boolean
   notebookStyle: NotebookStyle
-  audioInputId: string
+  /** Playback level, 0 to 1. */
+  volume: number
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -24,7 +26,12 @@ export const DEFAULT_PREFS: AppPrefs = {
   muteBuildFretClicks: false,
   sequenceToolbarCollapsed: false,
   notebookStyle: DEFAULT_NOTEBOOK_STYLE,
-  audioInputId: '',
+  volume: DEFAULT_VOLUME,
+}
+
+export function clampVolume(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_VOLUME
+  return Math.min(1, Math.max(0, value))
 }
 
 function readJson(key: string): unknown {
@@ -61,7 +68,7 @@ export function loadPrefs(): AppPrefs {
         ? raw.sequenceToolbarCollapsed
         : DEFAULT_PREFS.sequenceToolbarCollapsed,
     notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
-    audioInputId: typeof raw?.audioInputId === 'string' ? raw.audioInputId : '',
+    volume: clampVolume(raw?.volume),
   }
 }
 

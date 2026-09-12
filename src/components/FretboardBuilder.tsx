@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useMemo, useState } from 'react'
 
 import { playArpeggio, playNotes } from '../audio/player'
 import { ChordDiagram } from './ChordDiagram'
+import { LineFretboardModal } from './LineFretboardModal'
+import { LineNotation } from './LineNotation'
 import { beginLineDrag, beginVoicingDrag } from './voicingDrag'
 import {
   MAX_PLAYABLE_FRET,
@@ -19,30 +20,37 @@ import {
   voicingFromCustom,
 } from '../theory/customVoicing'
 import {
+  flattenLinePitches,
   emptyLineFingering,
   lineShape,
-  toggleLineNote,
+  placeLineNote,
   type LineNote,
+  type LineNoteValue,
+  type LineTuplet,
 } from '../theory/lineOutline'
 import { loadPrefs, updatePrefs } from '../state/prefs'
-import { slotFromLineNotes, type SequenceSlot } from '../state/songs'
+import { slotFromLineNotes } from '../state/songs'
 import type { Voicing } from '../theory/voicings'
 
 const ROOTS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const STRING_LABELS = ['E', 'A', 'D', 'G', 'B', 'e']
 const INLAYS = new Set([3, 5, 7, 9, 12, 15, 17, 19, 21, 24])
 const FRETS_PER_PAGE = 12
-const ALL_FRETS = Array.from({ length: MAX_PLAYABLE_FRET }, (_, i) => i + 1)
 
 interface Props {
   onAdd: (voicing: Voicing) => void
   onAddLine: (notes: LineNote[]) => void
+  bpm: number
 }
 
-export function FretboardBuilder({ onAdd, onAddLine }: Props) {
+export function FretboardBuilder({ onAdd, onAddLine, bpm }: Props) {
   const [mode, setMode] = useState<'shape' | 'line'>('shape')
   const [strings, setStrings] = useState<(number | null)[]>(emptyCustomStrings)
   const [lineNotes, setLineNotes] = useState<LineNote[]>([])
+  const [lineValue, setLineValue] = useState<LineNoteValue>(4)
+  const [lineTuplet, setLineTuplet] = useState<LineTuplet | undefined>(undefined)
+  const [lineStack, setLineStack] = useState(false)
+  const [lineSelected, setLineSelected] = useState(0)
   const [rootName, setRootName] = useState('C')
   const [rootTouched, setRootTouched] = useState(false)
   const [page, setPage] = useState(0)
@@ -87,8 +95,13 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
 
   const toggleFret = (string: number, fret: number) => {
     if (mode === 'line') {
-      const next = toggleLineNote(lineNotes, { string, fret }) ?? []
+      const next = placeLineNote(
+        lineNotes,
+        { string, fret, value: lineValue, tuplet: lineTuplet },
+        { stack: lineStack, at: lineSelected }
+      )
       setLineNotes(next)
+      if (!lineStack) setLineSelected(next.length - 1)
       if (!muteFretClicks) playNotes([STANDARD_TUNING[string] + fret])
       return
     }
@@ -103,11 +116,13 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
   const clear = () => {
     setStrings(emptyCustomStrings())
     setLineNotes([])
+    setLineSelected(0)
+    setLineStack(false)
     setRootTouched(false)
   }
 
   const noteCount = strings.filter((fret) => fret !== null).length
-  const lineCount = lineNotes.length
+  const lineCount = flattenLinePitches(lineNotes).length
 
   return (
     <div className="space-y-3">
@@ -199,72 +214,70 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
               Full neck
             </button>
           )}
-          <button
-            type="button"
-            disabled={page === 0}
-            onClick={() => setPage((value) => Math.max(0, value - 1))}
-            className="rounded-md bg-cosmos-800 px-2 py-1 text-[11px] font-semibold text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white disabled:opacity-40"
-          >
-            ← Lower
-          </button>
-          <button
-            type="button"
-            disabled={endFret >= MAX_PLAYABLE_FRET}
-            onClick={() => setPage((value) => value + 1)}
-            className="rounded-md bg-cosmos-800 px-2 py-1 text-[11px] font-semibold text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white disabled:opacity-40"
-          >
-            Higher →
-          </button>
+          {mode === 'shape' && (
+            <>
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
+                className="rounded-md bg-cosmos-800 px-2 py-1 text-[11px] font-semibold text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white disabled:opacity-40"
+              >
+                ← Lower
+              </button>
+              <button
+                type="button"
+                disabled={endFret >= MAX_PLAYABLE_FRET}
+                onClick={() => setPage((value) => value + 1)}
+                className="rounded-md bg-cosmos-800 px-2 py-1 text-[11px] font-semibold text-cosmos-300 transition hover:bg-cosmos-700 hover:text-white disabled:opacity-40"
+              >
+                Higher →
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-cosmos-700/60 bg-cosmos-950/50 p-2">
-        <FretboardGrid
-          mode={mode}
-          strings={strings}
-          lineNotes={lineNotes}
-          fretNumbers={fretNumbers}
-          onToggle={toggleFret}
-        />
-      </div>
-
-      <p className="text-[11px] text-cosmos-400">
-        {mode === 'line'
-          ? 'Click frets to outline a single-note line. Click a marked fret to remove it. Several notes can share a string.'
-          : 'Click a fret to place a note, click it again to mute the string. Open strings are the 0 column.'}
-      </p>
+      {mode === 'shape' && (
+        <>
+          <div className="overflow-x-auto rounded-xl border border-cosmos-700/60 bg-cosmos-950/50 p-2">
+            <FretboardGrid
+              mode={mode}
+              strings={strings}
+              lineNotes={lineNotes}
+              fretNumbers={fretNumbers}
+              onToggle={toggleFret}
+            />
+          </div>
+          <p className="text-[11px] text-cosmos-400">
+            Click a fret to place a note, click it again to mute the string. Open
+            strings are the 0 column.
+          </p>
+        </>
+      )}
 
       {mode === 'line' ? (
         lineSlot ? (
           <div
-            className="flex flex-wrap items-center gap-3 rounded-xl border border-nebula-500/40 bg-nebula-500/8 p-3"
+            className="space-y-3 rounded-xl border border-nebula-500/40 bg-nebula-500/8 p-3"
             draggable
             onDragStart={(event) => beginLineDrag(event, lineSlot)}
           >
-            <ChordDiagram
-              fingering={emptyLineFingering()}
-              shape={lineShape()}
-              size="md"
-              kind="line"
-              highlightedNotes={lineNotes}
-            />
-            <div className="min-w-[140px] flex-1">
-              <p className="text-lg font-bold text-white">
-                {lineSlot.chordSymbol}
-              </p>
-              <p className="mt-0.5 text-xs text-cosmos-300">
-                {lineCount} note{lineCount === 1 ? '' : 's'}
-              </p>
-              <p className="mt-1 text-xs text-cosmos-400">
-                {lineNotes
-                  .map(
-                    (note) =>
-                      midiToName(STANDARD_TUNING[note.string] + note.fret)
-                  )
-                  .join('  ·  ')}
-              </p>
-            </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <ChordDiagram
+                fingering={emptyLineFingering()}
+                shape={lineShape()}
+                size="md"
+                kind="line"
+                highlightedNotes={flattenLinePitches(lineNotes)}
+              />
+              <div className="min-w-[140px] flex-1">
+                <p className="text-lg font-bold text-white">
+                  {lineSlot.chordSymbol}
+                </p>
+                <p className="mt-0.5 text-xs text-cosmos-300">
+                  {lineCount} note{lineCount === 1 ? '' : 's'}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => onAddLine(lineNotes)}
@@ -273,11 +286,33 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
                 Add to sequence
               </button>
             </div>
+            <LineNotation
+              notes={lineNotes}
+              bpm={bpm}
+              actions={
+                <button
+                  type="button"
+                  onClick={() => setLineOpen(true)}
+                  className="h-7 rounded-md border border-cosmos-700 px-2 text-[11px] font-medium text-cosmos-200 transition hover:border-nebula-500 hover:text-white"
+                >
+                  Full neck
+                </button>
+              }
+            />
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-cosmos-700 p-5 text-center text-sm text-cosmos-400">
-            Place at least one fret to preview and add the line.
-          </p>
+          <div className="rounded-xl border border-dashed border-cosmos-700 p-5 text-center">
+            <p className="text-sm text-cosmos-400">
+              Open the full neck to write a line.
+            </p>
+            <button
+              type="button"
+              onClick={() => setLineOpen(true)}
+              className="mt-3 rounded-lg bg-nebula-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-nebula-500"
+            >
+              Full neck
+            </button>
+          </div>
         )
       ) : voicing && fingering ? (
         <div
@@ -333,15 +368,30 @@ export function FretboardBuilder({ onAdd, onAddLine }: Props) {
       </button>
 
       {mode === 'line' && (
-        <LineFretboardDialog
+        <LineFretboardModal
           open={lineOpen}
-          lineNotes={lineNotes}
-          lineSlot={lineSlot}
-          lineCount={lineCount}
-          onClose={() => setLineOpen(false)}
-          onToggle={toggleFret}
+          notes={lineNotes}
+          value={lineValue}
+          tuplet={lineTuplet}
+          stack={lineStack}
+          selected={lineSelected}
+          onValueChange={setLineValue}
+          onTupletChange={setLineTuplet}
+          onStackChange={setLineStack}
+          onSelectedChange={(index) => {
+            setLineSelected(index)
+            setLineStack(true)
+          }}
+          onAdd={toggleFret}
+          onChangeNotes={(next) => {
+            setLineNotes(next)
+            setLineSelected((current) =>
+              next.length === 0 ? 0 : Math.min(current, next.length - 1)
+            )
+          }}
           onClear={clear}
-          onSave={() => setLineOpen(false)}
+          onClose={() => setLineOpen(false)}
+          bpm={bpm}
         />
       )}
     </div>
@@ -414,148 +464,6 @@ function FretboardGrid({
         )
       })}
     </div>
-  )
-}
-
-function LineFretboardDialog({
-  open,
-  lineNotes,
-  lineSlot,
-  lineCount,
-  onClose,
-  onToggle,
-  onClear,
-  onSave,
-}: {
-  open: boolean
-  lineNotes: LineNote[]
-  lineSlot: SequenceSlot | null
-  lineCount: number
-  onClose: () => void
-  onToggle: (string: number, fret: number) => void
-  onClear: () => void
-  onSave: () => void
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = overflow
-    }
-  }, [onClose, open])
-
-  if (!open) return null
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-cosmos-950/80 p-3 backdrop-blur-sm sm:p-5"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="line-fretboard-title"
-        className="flex max-h-[min(920px,96vh)] w-[calc(100vw-1.5rem)] max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-nebula-500/40 bg-cosmos-900 shadow-[0_24px_80px_-24px_rgba(79,108,255,0.4)]"
-      >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-cosmos-700/70 px-4 py-3 sm:px-5">
-          <div>
-            <h2
-              id="line-fretboard-title"
-              className="text-lg font-semibold tracking-tight text-white"
-            >
-              Line fretboard
-            </h2>
-            <p className="mt-0.5 text-sm text-cosmos-400">
-              Whole neck · several notes can share a string
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-cosmos-700 px-3 py-1.5 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              className="rounded-lg bg-nebula-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-nebula-500"
-            >
-              Save
-            </button>
-          </div>
-        </header>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
-          <div className="overflow-x-auto rounded-xl border border-cosmos-700/60 bg-cosmos-950/50 p-2">
-            <FretboardGrid
-              mode="line"
-              strings={emptyCustomStrings()}
-              lineNotes={lineNotes}
-              fretNumbers={ALL_FRETS}
-              onToggle={onToggle}
-              compact
-            />
-          </div>
-
-          {lineSlot ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-nebula-500/40 bg-nebula-500/8 p-3">
-              <ChordDiagram
-                fingering={emptyLineFingering()}
-                shape={lineShape()}
-                size="md"
-                kind="line"
-                highlightedNotes={lineNotes}
-              />
-              <div className="min-w-[140px] flex-1">
-                <p className="text-lg font-bold text-white">
-                  {lineSlot.chordSymbol}
-                </p>
-                <p className="mt-0.5 text-xs text-cosmos-300">
-                  {lineCount} note{lineCount === 1 ? '' : 's'}
-                </p>
-                <p className="mt-1 text-xs text-cosmos-400">
-                  {lineNotes
-                    .map(
-                      (note) =>
-                        midiToName(STANDARD_TUNING[note.string] + note.fret)
-                    )
-                    .join('  ·  ')}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onClear}
-                  className="rounded-lg border border-cosmos-700 px-3 py-2 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="rounded-xl border border-dashed border-cosmos-700 p-4 text-center text-sm text-cosmos-400">
-              Place at least one fret, then Save to return to Build.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
   )
 }
 

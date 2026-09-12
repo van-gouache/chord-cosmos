@@ -15,7 +15,6 @@ import {
   rootFromCustomSymbol,
   shiftCustomFingering,
 } from '../theory/customVoicing'
-import { readLineAudio, type LineAudio } from '../audio/lineAudio'
 import {
   EMPTY_LINE_TAB,
   LINE_GROUP_ID,
@@ -24,8 +23,10 @@ import {
   lineShape,
   lineSlotLabel,
   readLineNotes,
-  toggleLineNote,
+  appendLineNote,
+  type LineNote,
 } from '../theory/lineOutline'
+import { lineNotationBeats } from '../theory/lineNotation'
 import {
   fingeringFromTab,
   MAX_PLAYABLE_FRET,
@@ -106,13 +107,11 @@ export interface SequenceSlot {
   /** Roman numeral from the progression builder when this chord was placed. */
   roman?: string
   /** Ordered frets of a single-note line (`groupId` is Line). */
-  lineNotes?: HighlightedNote[]
+  lineNotes?: LineNote[]
   /** Extra fret rows toward the nut, beyond the automatic box. */
   extendLow?: number
   /** Extra fret rows toward the body, beyond the automatic box. */
   extendHigh?: number
-  /** Recorded microphone take for a Line box. */
-  lineAudio?: LineAudio
 }
 
 export interface HighlightedNote {
@@ -268,7 +267,15 @@ export function clampBeats(value: unknown): number {
 
 export function slotBeats(slot: SequenceSlot | null | undefined): number {
   if (!slot) return 0
+  if (isLineGroupId(slot.groupId)) return lineBeats(slot.lineNotes)
   return slot.beats == null ? DEFAULT_SLOT_BEATS : clampBeats(slot.beats)
+}
+
+/** A line lasts exactly as long as its written rhythm. */
+function lineBeats(notes: LineNote[] | undefined): number {
+  const written = lineNotationBeats(notes ?? [])
+  if (written <= 0) return DEFAULT_SLOT_BEATS
+  return Math.min(MAX_SLOT_BEATS, written)
 }
 
 /** Seconds for one beat at the given tempo. */
@@ -333,7 +340,7 @@ export function slotFromVoicing(
 }
 
 export function slotFromLineNotes(
-  notes: HighlightedNote[]
+  notes: readonly LineNote[]
 ): SequenceSlot | null {
   const lineNotes = readLineNotes(notes)
   if (!lineNotes) return null
@@ -367,7 +374,6 @@ export function linePayload(slot: SequenceSlot): string {
     inversion: slot.inversion,
     tab: slot.tab,
     lineNotes: slot.lineNotes,
-    lineAudio: slot.lineAudio,
   })
 }
 
@@ -378,7 +384,6 @@ export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
       return null
     }
     const lineNotes = readLineNotes(value.lineNotes)
-    const lineAudio = readLineAudio(value.lineAudio)
     return {
       id: newId(),
       chordSymbol: value.chordSymbol,
@@ -388,7 +393,6 @@ export function slotFromVoicingPayload(raw: string): SequenceSlot | null {
       note: '',
       playback: isPlayback(value.playback) ? value.playback : undefined,
       lineNotes,
-      lineAudio,
       roman: readRoman(value.roman),
     }
   } catch {
@@ -401,8 +405,10 @@ export function cloneSlot(slot: SequenceSlot): SequenceSlot {
     ...slot,
     id: newId(),
     highlightedNotes: slot.highlightedNotes?.map((note) => ({ ...note })),
-    lineNotes: slot.lineNotes?.map((note) => ({ ...note })),
-    lineAudio: slot.lineAudio ? { ...slot.lineAudio } : undefined,
+    lineNotes: slot.lineNotes?.map((note) => ({
+      ...note,
+      stack: note.stack?.map((pitch) => ({ ...pitch })),
+    })),
   }
 }
 
@@ -978,9 +984,6 @@ export function patchSlot(
   if ('lineNotes' in patch && patch.lineNotes === undefined) {
     delete next.lineNotes
   }
-  if ('lineAudio' in patch && patch.lineAudio === undefined) {
-    delete next.lineAudio
-  }
   if ('extendLow' in patch && patch.extendLow === undefined) delete next.extendLow
   if ('extendHigh' in patch && patch.extendHigh === undefined) {
     delete next.extendHigh
@@ -1032,7 +1035,7 @@ export function toggleSlotHighlight(
   if (!slot) return song
   if (isLineGroupId(slot.groupId)) {
     return patchSlot(song, location, {
-      lineNotes: toggleLineNote(slot.lineNotes, note),
+      lineNotes: appendLineNote(slot.lineNotes, note),
     })
   }
   return patchSlot(song, location, {
@@ -1254,7 +1257,6 @@ function readSlot(value: unknown): SequenceSlot | null {
     strumPattern: normalizeStrumPattern(s.strumPattern),
     highlightedNotes: readHighlightedNotes(s.highlightedNotes),
     lineNotes: readLineNotes(s.lineNotes),
-    lineAudio: readLineAudio(s.lineAudio),
     extendLow: readExtraCount(s.extendLow),
     extendHigh: readExtraCount(s.extendHigh),
     roman: readRoman(s.roman),
@@ -1320,10 +1322,26 @@ function shiftHighlightedNotes(
   if (!highlighted?.length) return highlighted
   const next = highlighted
     .map((note) => {
-      if (note.fret === 0) return note
-      const fret = note.fret + deltaFrets
-      if (fret < 1 || fret > MAX_PLAYABLE_FRET) return null
-      return { string: note.string, fret }
+      const shiftFret = (fret: number) => {
+        if (fret === 0) return 0
+        const moved = fret + deltaFrets
+        if (moved < 1 || moved > MAX_PLAYABLE_FRET) return null
+        return moved
+      }
+      const fret = shiftFret(note.fret)
+      if (fret === null) return null
+      const stacked = (note as LineNote).stack
+      const stack = stacked
+        ?.map((pitch) => {
+          const nextFret = shiftFret(pitch.fret)
+          return nextFret === null ? null : { ...pitch, fret: nextFret }
+        })
+        .filter((pitch): pitch is { string: number; fret: number } => pitch !== null)
+      return {
+        ...note,
+        fret,
+        ...(stack && stack.length > 0 ? { stack } : {}),
+      }
     })
     .filter((note): note is HighlightedNote => note !== null)
   return next.length > 0 ? next : undefined
@@ -1495,25 +1513,12 @@ export function saveState(state: StoredState): void {
   }
 }
 
-/** JSON download of a sequence: chords and line outlines, not microphone takes. */
+/** JSON download of a sequence: chords and line outlines. */
 export function songForJsonExport(song: Song): Song {
-  return {
-    ...song,
-    sections: song.sections.map((section) => ({
-      ...section,
-      bars: section.bars.map((bar) => ({
-        ...bar,
-        slots: bar.slots.map((slot) => {
-          if (!slot?.lineAudio) return slot
-          const { lineAudio: _dropped, ...rest } = slot
-          return rest
-        }),
-      })),
-    })),
-  }
+  return song
 }
 
-/** Library JSON: every sequence, chords and outlines, not microphone takes. */
+/** Library JSON: every sequence, chords and outlines. */
 export function libraryForJsonExport(songs: Song[]): {
   format: 'chord-cosmos.library.v1'
   songs: Song[]

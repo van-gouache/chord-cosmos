@@ -38,6 +38,16 @@ describe('app prefs', () => {
     expect(loadPrefs().muteBuildFretClicks).toBe(true)
   })
 
+  it('remembers playback volume and keeps it inside 0 to 1', () => {
+    expect(loadPrefs().volume).toBe(DEFAULT_PREFS.volume)
+    updatePrefs({ volume: 0.25 })
+    expect(loadPrefs().volume).toBe(0.25)
+    store[PREFS_KEY] = JSON.stringify({ volume: 4 })
+    expect(loadPrefs().volume).toBe(1)
+    store[PREFS_KEY] = JSON.stringify({ volume: 'loud' })
+    expect(loadPrefs().volume).toBe(DEFAULT_PREFS.volume)
+  })
+
   it('remembers notebook page style', () => {
     expect(loadPrefs().notebookStyle).toBe('cream')
     updatePrefs({ notebookStyle: 'legal' })
@@ -54,11 +64,5 @@ describe('app prefs', () => {
   it('falls back when a notebook style is unknown', () => {
     store[PREFS_KEY] = JSON.stringify({ notebookStyle: 'spiral' })
     expect(loadPrefs().notebookStyle).toBe('cream')
-  })
-
-  it('remembers the chosen audio input', () => {
-    expect(loadPrefs().audioInputId).toBe('')
-    updatePrefs({ audioInputId: 'mic-2' })
-    expect(loadPrefs().audioInputId).toBe('mic-2')
   })
 })

@@ -2,39 +2,105 @@ import { describe, expect, it } from 'vitest'
 
 import {
   LINE_GROUP_ID,
+  appendLineNote,
+  flattenLinePitches,
   lineMidiNotes,
+  placeLineNote,
   readLineNotes,
-  toggleLineNote,
+  removeLineNoteAt,
+  stackLineNote,
 } from './lineOutline'
 
 describe('line outlines', () => {
-  it('adds and removes frets as an unordered set', () => {
-    const first = toggleLineNote(undefined, { string: 5, fret: 7 })
-    const second = toggleLineNote(first, { string: 4, fret: 8 })
-    const third = toggleLineNote(second, { string: 5, fret: 10 })
+  it('appends frets in click order, including repeats', () => {
+    const first = appendLineNote(undefined, { string: 5, fret: 7, value: 8 })
+    const second = appendLineNote(first, { string: 4, fret: 8 })
+    const third = appendLineNote(second, { string: 5, fret: 7, value: 16 })
     expect(third).toEqual([
+      { string: 5, fret: 7, value: 8 },
       { string: 4, fret: 8 },
-      { string: 5, fret: 7 },
-      { string: 5, fret: 10 },
+      { string: 5, fret: 7, value: 16 },
     ])
-    expect(toggleLineNote(third, { string: 4, fret: 8 })).toEqual([
-      { string: 5, fret: 7 },
-      { string: 5, fret: 10 },
+    expect(removeLineNoteAt(third, 0)).toEqual([
+      { string: 4, fret: 8 },
+      { string: 5, fret: 7, value: 16 },
     ])
   })
 
-  it('sorts stored notes by string then fret', () => {
+  it('keeps stored order, durations, and repeated frets', () => {
     expect(
       readLineNotes([
-        { string: 5, fret: 7 },
+        { string: 5, fret: 7, value: 8 },
         { string: 2, fret: 5 },
         { string: 5, fret: 7 },
         { string: 1, fret: 3 },
       ])
     ).toEqual([
-      { string: 1, fret: 3 },
+      { string: 5, fret: 7, value: 8 },
       { string: 2, fret: 5 },
       { string: 5, fret: 7 },
+      { string: 1, fret: 3 },
+    ])
+  })
+
+  it('keeps tuplets through append and read, ignoring odd values', () => {
+    expect(
+      appendLineNote(undefined, { string: 5, fret: 7, value: 8, tuplet: 3 })
+    ).toEqual([{ string: 5, fret: 7, value: 8, tuplet: 3 }])
+    expect(
+      readLineNotes([
+        { string: 5, fret: 7, value: 16, tuplet: 6 },
+        { string: 5, fret: 5, tuplet: 4 },
+      ])
+    ).toEqual([
+      { string: 5, fret: 7, value: 16, tuplet: 6 },
+      { string: 5, fret: 5 },
+    ])
+  })
+
+  it('stacks extra pitches on a written event without adding duration', () => {
+    const first = appendLineNote(undefined, { string: 5, fret: 7, value: 8 })
+    const stacked = stackLineNote(first, 0, { string: 4, fret: 8 })
+    expect(stacked).toEqual([
+      { string: 5, fret: 7, value: 8, stack: [{ string: 4, fret: 8 }] },
+    ])
+    expect(flattenLinePitches(stacked)).toEqual([
+      { string: 5, fret: 7, at: 1 },
+      { string: 4, fret: 8, at: 1 },
+    ])
+    expect(
+      placeLineNote(stacked, { string: 3, fret: 9 }, { stack: true, at: 0 })
+    ).toEqual([
+      {
+        string: 5,
+        fret: 7,
+        value: 8,
+        stack: [
+          { string: 4, fret: 8 },
+          { string: 3, fret: 9 },
+        ],
+      },
+    ])
+    expect(stackLineNote(stacked, 0, { string: 4, fret: 8 })).toEqual([
+      { string: 5, fret: 7, value: 8 },
+    ])
+    expect(stackLineNote(stacked, 0, { string: 4, fret: 9 })).toEqual([
+      { string: 5, fret: 7, value: 8, stack: [{ string: 4, fret: 9 }] },
+    ])
+  })
+
+  it('keeps stacked pitches through read', () => {
+    expect(
+      readLineNotes([
+        {
+          string: 5,
+          fret: 7,
+          value: 8,
+          stack: [{ string: 4, fret: 8 }, { string: 4, fret: 9 }],
+        },
+      ])
+    ).toEqual([
+      { string: 5, fret: 7, value: 8, stack: [{ string: 4, fret: 8 }] },
     ])
   })
 

@@ -7,11 +7,18 @@ import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
 import { GripCatalogModal } from './components/GripCatalogModal'
-import { unlockAudio } from './audio/player'
+import { useDragAutoScroll } from './components/dragAutoScroll'
+import { setMasterVolume, unlockAudio } from './audio/player'
 import { WorkshopConfig } from './components/WorkshopConfig'
 import { CircleOfFifths } from './components/CircleOfFifths'
 import { KeyCenterSuggestions } from './components/KeyCenterSuggestions'
-import { barAt, locationExists, nextChordForWorkshop, type SlotLocation } from './state/songs'
+import {
+  barAt,
+  DEFAULT_BPM,
+  locationExists,
+  nextChordForWorkshop,
+  type SlotLocation,
+} from './state/songs'
 import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
 import { tryParseChord } from './theory/chords'
@@ -38,12 +45,10 @@ export default function App() {
   const [toolbarCollapsed, setToolbarCollapsed] = useState(
     () => loadPrefs().sequenceToolbarCollapsed
   )
+  const [volume, setVolume] = useState(() => loadPrefs().volume)
   const [notebookMode, setNotebookMode] = useState(false)
   const [notebookStyle, setNotebookStyle] = useState(
     () => loadPrefs().notebookStyle
-  )
-  const [audioInputId, setAudioInputId] = useState(
-    () => loadPrefs().audioInputId
   )
   const [qualityNonce, setQualityNonce] = useState(0)
   const [selectedVoicing, setSelectedVoicing] = useState<Voicing | null>(null)
@@ -64,6 +69,11 @@ export default function App() {
   const usedBrowserFullscreen = useRef(false)
 
   const songs = useSongs()
+  useDragAutoScroll()
+
+  useEffect(() => {
+    setMasterVolume(volume)
+  }, [volume])
 
   useEffect(() => {
     if (!selectedSlot) return
@@ -334,12 +344,7 @@ export default function App() {
             onSetSlotBeats={songs.setSlotBeats}
             onSetSlotPlayback={songs.setSlotPlayback}
             onSetSlotStrumPattern={songs.setSlotStrumPattern}
-            onSetLineAudio={songs.setLineAudio}
-            audioInputId={audioInputId}
-            onAudioInputIdChange={(deviceId) => {
-              setAudioInputId(deviceId)
-              updatePrefs({ audioInputId: deviceId })
-            }}
+            onSetLineNotes={songs.setLineNotes}
             onToggleHighlight={songs.toggleHighlight}
             onExtendFrets={songs.extendFrets}
             onShiftSlotOctave={songs.shiftSlotOctave}
@@ -514,15 +519,16 @@ export default function App() {
                       setNotebookStyle(style)
                       updatePrefs({ notebookStyle: style })
                     }}
-                    audioInputId={audioInputId}
-                    onAudioInputIdChange={(deviceId) => {
-                      setAudioInputId(deviceId)
-                      updatePrefs({ audioInputId: deviceId })
+                    volume={volume}
+                    onVolumeChange={(value) => {
+                      setVolume(value)
+                      updatePrefs({ volume: value })
                     }}
                   />
                 ) : workshopTab === 'build' ? (
                   <div className="rounded-xl border border-cosmos-700/60 bg-cosmos-950/40 p-3">
                     <FretboardBuilder
+                      bpm={songs.activeSong?.bpm ?? DEFAULT_BPM}
                       onAdd={handleAdd}
                       onAddLine={(notes) => {
                         const placed = songs.addLine(notes, selectedSlot)
@@ -666,6 +672,7 @@ export default function App() {
           onAdd={(voicing) => {
             loadVoicingIntoWorkshop(voicing)
             handleAdd(voicing)
+            setGripCatalogOpen(false)
           }}
         />
       )}
