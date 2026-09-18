@@ -86,53 +86,76 @@ export function LineRhythmPicker({
   value,
   tuplet,
   stack = false,
+  editSelected = false,
   onChange,
   onTupletChange,
   onStackChange,
+  onRest,
 }: {
   value: LineNoteValue
   tuplet?: LineTuplet
   stack?: boolean
+  /** Rhythm chips rewrite the selected staff note instead of only the next click. */
+  editSelected?: boolean
   onChange: (value: LineNoteValue) => void
   onTupletChange: (tuplet: LineTuplet | undefined) => void
   onStackChange: (stack: boolean) => void
+  onRest?: () => void
 }) {
+  const valueHint = editSelected
+    ? 'change the selected note'
+    : 'the next fret click uses this value'
+  const tupletHint = editSelected
+    ? 'change the selected note'
+    : 'the next fret click uses this grouping'
   return (
     <div
       data-no-drag=""
-      className="space-y-1"
+      className="max-w-[22rem] space-y-2.5"
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <p className="text-[10px] font-semibold tracking-[0.12em] text-cosmos-500 uppercase">
-        Rhythm
-      </p>
-      <p className="text-[10px] text-cosmos-500">
-        {stack
-          ? 'Next fret stacks onto the selected staff note.'
-          : 'Then click a fret. Same fret can repeat.'}
-      </p>
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Next note value">
+      <div className="mb-0.5 flex items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
+          Rhythm
+        </p>
+        <p className="text-[11px] text-cosmos-400">
+          {editSelected
+            ? 'Applies to the selected note'
+            : stack
+              ? 'Next fret stacks on the selected note'
+              : 'Then click a fret'}
+        </p>
+      </div>
+      <div
+        className="grid grid-cols-6 gap-1"
+        role="group"
+        aria-label={editSelected ? 'Selected note value' : 'Next note value'}
+      >
         {LINE_NOTE_VALUES.map((item) => (
           <button
             key={item}
             type="button"
-            title={`${valueLabel(item)} — the next fret click uses this value`}
+            title={`${valueLabel(item)} — ${valueHint}`}
             aria-pressed={value === item}
             onClick={() => onChange(item)}
-            className={chipClass(value === item)}
+            className={toolClass(value === item)}
           >
             {valueGlyph(item)}
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Next note tuplet">
+      <div
+        className="grid grid-cols-5 gap-1"
+        role="group"
+        aria-label={editSelected ? 'Selected note tuplet' : 'Next note tuplet'}
+      >
         <button
           type="button"
-          title="Straight time — no tuplet"
+          title={`Straight time — ${tupletHint}`}
           aria-pressed={tuplet === undefined}
           onClick={() => onTupletChange(undefined)}
-          className={chipClass(tuplet === undefined)}
+          className={toolClass(tuplet === undefined)}
         >
           ♪♪
         </button>
@@ -143,19 +166,19 @@ export function LineRhythmPicker({
             title={`${tupletLabel(item)} — ${item} in the time of ${tupletNormal(item)}`}
             aria-pressed={tuplet === item}
             onClick={() => onTupletChange(item)}
-            className={chipClass(tuplet === item)}
+            className={toolClass(tuplet === item)}
           >
             {item}
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Next fret placement">
+      <div className="grid grid-cols-3 gap-1" role="group" aria-label="Next fret placement">
         <button
           type="button"
           title="Add a new note after the last one"
           aria-pressed={!stack}
           onClick={() => onStackChange(false)}
-          className={chipClass(!stack)}
+          className={toolClass(!stack)}
         >
           Add
         </button>
@@ -164,9 +187,18 @@ export function LineRhythmPicker({
           title="Stack onto the selected staff note"
           aria-pressed={stack}
           onClick={() => onStackChange(true)}
-          className={chipClass(stack)}
+          className={toolClass(stack)}
         >
           Stack
+        </button>
+        <button
+          type="button"
+          title={`${valueLabel(value)} rest — insert silence after the selected note`}
+          disabled={!onRest}
+          onClick={onRest}
+          className={toolClass(false)}
+        >
+          Rest
         </button>
       </div>
     </div>
@@ -223,6 +255,7 @@ export function LineStaff({
   /** Top of a column's own ink, stem included. */
   const inkTop = (index: number) => {
     const column = columns[index]
+    if (column.rest || column.voices.length === 0) return yOf(TREBLE_TOP) - 2
     const mid =
       column.voices.reduce((sum, voice) => sum + voice.step, 0) /
       column.voices.length
@@ -315,6 +348,45 @@ export function LineStaff({
       })}
       {columns.map((column, index) => {
         const x = xOf(index)
+        const palette = paletteFor(index)
+        if (column.rest || column.voices.length === 0) {
+          return (
+            <g key={`col-${index}-rest`}>
+              <RestGlyph
+                x={x}
+                yOf={yOf}
+                value={column.value}
+                className={ink ? 'fill-current' : palette.head}
+              />
+              {numbered ? (
+                <text
+                  x={x}
+                  y={height - 3}
+                  textAnchor="middle"
+                  fontSize={7}
+                  className={
+                    index === selected ? 'fill-nebula-300' : 'fill-cosmos-500'
+                  }
+                >
+                  {index + 1}
+                </text>
+              ) : null}
+              {onSelect ? (
+                <rect
+                  x={x - NOTE_GAP / 2}
+                  y={0}
+                  width={NOTE_GAP}
+                  height={height}
+                  fill="transparent"
+                  className="cursor-pointer"
+                  onClick={() => onSelect(index)}
+                >
+                  <title>{`${index + 1}. rest`}</title>
+                </rect>
+              ) : null}
+            </g>
+          )
+        }
         const mid =
           column.voices.reduce((sum, voice) => sum + voice.step, 0) /
           column.voices.length
@@ -325,7 +397,6 @@ export function LineStaff({
         const stemX = up ? x + HEAD_RX - 0.6 : x - HEAD_RX + 0.6
         const stemFrom = yOf(up ? bottomVoice.step : topVoice.step)
         const stemEnd = up ? yOf(topVoice.step) - STEM : yOf(bottomVoice.step) + STEM
-        const palette = paletteFor(index)
         const shifts = secondShifts(column.voices.map((voice) => voice.step), up)
         return (
           <g key={`col-${index}-${columnLabel(column)}`}>
@@ -383,18 +454,13 @@ export function LineStaff({
                 className={palette.stem}
               />
             )}
-            {(column.value === 8 || column.value === 16) && (
+            {Array.from({ length: flagCount(column.value) }, (_, i) => (
               <path
-                d={flagPath(stemX, stemEnd, up)}
+                key={`flag-${i}`}
+                d={flagPath(stemX, stemEnd + (up ? 5 : -5) * i, up)}
                 className={palette.head}
               />
-            )}
-            {column.value === 16 && (
-              <path
-                d={flagPath(stemX, stemEnd + (up ? 5 : -5), up)}
-                className={palette.head}
-              />
-            )}
+            ))}
             {numbered ? (
               <text
                 x={x}
@@ -547,7 +613,7 @@ export function LineNotation({
             type="button"
             aria-label="Remove this note"
             onClick={() => change(removeLineNoteAt(notes, selected))}
-            className={`${chipClass(false)} hover:border-rose-400 hover:text-rose-200`}
+            className={`${chipClass(false)} hover:bg-rose-900/60 hover:text-rose-200`}
           >
             ✕
           </button>
@@ -568,6 +634,63 @@ export function LineNotation({
   )
 }
 
+function RestGlyph({
+  x,
+  yOf,
+  value,
+  className,
+}: {
+  x: number
+  yOf: (step: number) => number
+  value: LineNoteValue
+  className: string
+}) {
+  const midY = yOf(STEM_SPLIT)
+  const dY = yOf(TREBLE_TOP - 2)
+  if (value === 1) {
+    return <rect x={x - 4.4} y={dY} width={8.8} height={3.4} className={className} />
+  }
+  if (value === 2) {
+    return (
+      <rect x={x - 4.4} y={midY - 3.4} width={8.8} height={3.4} className={className} />
+    )
+  }
+  if (value === 4) {
+    return <path d={quarterRestPath(x, midY)} className={className} />
+  }
+  const hooks = value === 32 ? 3 : value === 16 ? 2 : 1
+  const start = midY - (hooks - 1) * 2
+  return (
+    <g className={className}>
+      {Array.from({ length: hooks }, (_, i) => (
+        <path key={`rest-hook-${i}`} d={eighthRestPath(x, start + i * 5)} />
+      ))}
+    </g>
+  )
+}
+
+function quarterRestPath(x: number, y: number): string {
+  return [
+    `M ${x - 1.4} ${y - 9}`,
+    `c 4.4 2.4, 3.8 5.6, -0.4 7.4`,
+    `c 5 0.8, 4.4 5.6, -1.8 8.6`,
+    `c 2.6 -0.8, 4.4 -3.2, 2.4 -5.6`,
+    `c 3.8 -2, 3.2 -5.6, -1.4 -8.6`,
+    'z',
+  ].join(' ')
+}
+
+function eighthRestPath(x: number, y: number): string {
+  return [
+    `M ${x + 3.2} ${y - 6}`,
+    `a 2.8 2.2 -28 1 1 -3.6 2`,
+    `L ${x - 1.8} ${y + 8}`,
+    `l 1.4 0.7`,
+    `L ${x + 3.4} ${y - 2.6}`,
+    'z',
+  ].join(' ')
+}
+
 /** Offset the upper note of each second so the heads don't collide. */
 function secondShifts(steps: readonly number[], up: boolean): number[] {
   const shifts = steps.map(() => 0)
@@ -578,15 +701,30 @@ function secondShifts(steps: readonly number[], up: boolean): number[] {
   return shifts
 }
 
+function flagCount(value: LineNoteValue): number {
+  if (value === 8) return 1
+  if (value === 16) return 2
+  if (value === 32) return 3
+  return 0
+}
+
 function flagPath(x: number, y: number, up: boolean): string {
   const dir = up ? 1 : -1
   return `M ${x} ${y} c 6 ${3 * dir}, 6.5 ${8 * dir}, 2.5 ${11 * dir} c 0.8 ${-4 * dir}, 0 ${-7 * dir}, -2.5 ${-11 * dir} z`
 }
 
-function chipClass(active: boolean): string {
-  return `h-7 min-w-7 rounded-md border px-1.5 text-xs font-medium transition disabled:opacity-30 ${
+function toolClass(active: boolean): string {
+  return `rounded-md px-1 py-1.5 text-sm font-semibold transition ${
     active
-      ? 'border-nebula-500 bg-nebula-600 text-white'
-      : 'border-cosmos-700 bg-cosmos-900 text-cosmos-200 hover:border-nebula-500 hover:text-white'
+      ? 'bg-nebula-600 text-white'
+      : 'bg-cosmos-800 text-cosmos-300 hover:bg-cosmos-700 hover:text-white'
+  }`
+}
+
+function chipClass(active: boolean): string {
+  return `h-7 min-w-7 rounded-md px-1.5 text-xs font-semibold transition disabled:opacity-30 ${
+    active
+      ? 'bg-nebula-600 text-white'
+      : 'bg-cosmos-800 text-cosmos-300 hover:bg-cosmos-700 hover:text-white'
   }`
 }

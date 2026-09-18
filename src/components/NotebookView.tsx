@@ -19,6 +19,7 @@ import {
 import {
   hydrateSlot,
   barLabel,
+  locationKey,
   locationsEqual,
   type SequenceSlot,
   type SlotLocation,
@@ -29,9 +30,13 @@ interface Props {
   song: Song
   style: NotebookStyle
   selected: SlotLocation | null
+  selectedKeys?: Set<string>
   playingLocation: SlotLocation | null
   playingCellRef: RefCallback<HTMLElement>
-  onSelect: (location: SlotLocation) => void
+  onSelect: (
+    location: SlotLocation,
+    event?: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }
+  ) => void
   onPreview: (location: SlotLocation, slot: SequenceSlot) => void
   onPlayFromSection: (sectionId: string) => void
 }
@@ -73,6 +78,7 @@ export function NotebookView({
   song,
   style,
   selected,
+  selectedKeys,
   playingLocation,
   playingCellRef,
   onSelect,
@@ -121,6 +127,7 @@ export function NotebookView({
                           slotIndex,
                         }}
                         selected={selected}
+                        selectedKeys={selectedKeys}
                         playingLocation={playingLocation}
                         playingCellRef={playingCellRef}
                         onSelect={onSelect}
@@ -162,6 +169,7 @@ function NotebookEntry({
   mode,
   location,
   selected,
+  selectedKeys,
   playingLocation,
   playingCellRef,
   onSelect,
@@ -172,15 +180,20 @@ function NotebookEntry({
   mode?: ModeId
   location: SlotLocation
   selected: SlotLocation | null
+  selectedKeys?: Set<string>
   playingLocation: SlotLocation | null
   playingCellRef: RefCallback<HTMLElement>
-  onSelect: (location: SlotLocation) => void
+  onSelect: (
+    location: SlotLocation,
+    event?: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }
+  ) => void
   onPreview: (location: SlotLocation, slot: SequenceSlot) => void
 }) {
   const isPlaying =
     playingLocation !== null && locationsEqual(playingLocation, location)
-  const isSelected =
-    selected !== null && locationsEqual(selected, location)
+  const isSelected = selectedKeys
+    ? selectedKeys.has(locationKey(location))
+    : selected !== null && locationsEqual(selected, location)
   const hydrated = hydrateSlot(slot)
   const romanLabel = isLineGroupId(slot.groupId)
     ? undefined
@@ -193,9 +206,9 @@ function NotebookEntry({
       className={`notebook-chord is-box${isPlaying ? ' is-playing' : ''}${
         isSelected ? ' is-selected' : ''
       }`}
-      onClick={() => {
+      onClick={(event) => {
         onPreview(location, slot)
-        onSelect(location)
+        onSelect(location, event)
       }}
     >
       <div className="notebook-chord-head">

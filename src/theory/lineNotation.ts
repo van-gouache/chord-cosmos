@@ -6,12 +6,14 @@
 import { STANDARD_TUNING } from './fretboard'
 import {
   isLineNoteValue,
+  isLineRest,
   isLineTuplet,
   lineNotePitches,
   LINE_NOTE_VALUES,
   LINE_TUPLETS,
   type LineNote,
   type LineNoteValue,
+  type LineSound,
   type LineTuplet,
 } from './lineOutline'
 import {
@@ -28,7 +30,7 @@ const DEFAULT_VALUE: LineNoteValue = 4
 export const GUITAR_WRITTEN_OCTAVE = 12
 
 export interface LineStaffNote {
-  note: LineNote
+  note: LineSound
   midi: number
   writtenMidi: number
   name: string
@@ -56,6 +58,7 @@ export interface LineStaffColumn {
   value: LineNoteValue
   tuplet?: LineTuplet
   beats: number
+  rest?: boolean
 }
 
 export function lineNoteValue(note: LineNote): LineNoteValue {
@@ -166,7 +169,7 @@ export function setLineNoteTuplet(
 }
 
 export function lineStaffNote(
-  note: LineNote,
+  note: LineSound,
   rootName?: string
 ): LineStaffNote {
   const midi = STANDARD_TUNING[note.string] + note.fret
@@ -197,7 +200,7 @@ export function lineStaffNotes(
   notes: readonly LineNote[],
   rootName?: string
 ): LineStaffNote[] {
-  return notes.map((note) => lineStaffNote(note, rootName))
+  return notes.filter((note): note is LineSound => !isLineRest(note)).map((note) => lineStaffNote(note, rootName))
 }
 
 export function lineStaffColumns(
@@ -205,6 +208,16 @@ export function lineStaffColumns(
   rootName?: string
 ): LineStaffColumn[] {
   return notes.map((note, index) => {
+    if (isLineRest(note)) {
+      return {
+        index,
+        voices: [],
+        value: lineNoteValue(note),
+        tuplet: lineNoteTuplet(note),
+        beats: lineNoteBeats(note),
+        rest: true,
+      }
+    }
     const voices = lineNotePitches(note)
       .map((pitch) =>
         lineStaffNote(
@@ -229,6 +242,7 @@ export function lineStaffColumns(
 }
 
 export function columnLabel(column: LineStaffColumn): string {
+  if (column.rest) return 'rest'
   return column.voices.map((voice) => voice.name).join('/')
 }
 
@@ -255,6 +269,8 @@ export function valueGlyph(value: LineNoteValue): string {
       return '♪'
     case 16:
       return '♬'
+    case 32:
+      return '32'
   }
 }
 
@@ -270,6 +286,8 @@ export function valueLabel(value: LineNoteValue): string {
       return 'Eighth'
     case 16:
       return 'Sixteenth'
+    case 32:
+      return 'Thirty-second'
   }
 }
 

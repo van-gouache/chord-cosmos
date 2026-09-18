@@ -4,10 +4,12 @@ import {
   LINE_GROUP_ID,
   appendLineNote,
   flattenLinePitches,
+  insertLineRest,
   lineMidiNotes,
   placeLineNote,
   readLineNotes,
   removeLineNoteAt,
+  setLineNoteRhythm,
   stackLineNote,
 } from './lineOutline'
 
@@ -51,10 +53,12 @@ describe('line outlines', () => {
       readLineNotes([
         { string: 5, fret: 7, value: 16, tuplet: 6 },
         { string: 5, fret: 5, tuplet: 4 },
+        { string: 4, fret: 8, value: 32 },
       ])
     ).toEqual([
       { string: 5, fret: 7, value: 16, tuplet: 6 },
       { string: 5, fret: 5 },
+      { string: 4, fret: 8, value: 32 },
     ])
   })
 
@@ -102,6 +106,63 @@ describe('line outlines', () => {
     ).toEqual([
       { string: 5, fret: 7, value: 8, stack: [{ string: 4, fret: 8 }] },
     ])
+  })
+
+  it('rewrites one event duration without moving pitches', () => {
+    const notes = [
+      { string: 5, fret: 7, value: 8 as const },
+      { string: 4, fret: 8, stack: [{ string: 3, fret: 9 }] },
+    ]
+    expect(setLineNoteRhythm(notes, 1, { value: 16, tuplet: 6 })).toEqual([
+      { string: 5, fret: 7, value: 8 },
+      {
+        string: 4,
+        fret: 8,
+        value: 16,
+        tuplet: 6,
+        stack: [{ string: 3, fret: 9 }],
+      },
+    ])
+    expect(setLineNoteRhythm(notes, 0, { value: 4 })).toEqual([
+      { string: 5, fret: 7 },
+      { string: 4, fret: 8, stack: [{ string: 3, fret: 9 }] },
+    ])
+    expect(
+      setLineNoteRhythm([{ string: 5, fret: 7, value: 8, tuplet: 3 }], 0, {
+        value: 16,
+      })
+    ).toEqual([{ string: 5, fret: 7, value: 16, tuplet: 3 }])
+    expect(
+      setLineNoteRhythm([{ string: 5, fret: 7, value: 8, tuplet: 3 }], 0, {
+        tuplet: undefined,
+      })
+    ).toEqual([{ string: 5, fret: 7, value: 8 }])
+    expect(setLineNoteRhythm(notes, 9, { value: 2 })).toEqual(notes)
+  })
+
+  it('inserts rests that take time but have no pitch', () => {
+    const notes = [{ string: 5, fret: 7 }]
+    expect(insertLineRest(notes, { value: 8 }, 0)).toEqual([
+      { string: 5, fret: 7 },
+      { rest: true, value: 8 },
+    ])
+    expect(insertLineRest(undefined, { value: 2 })).toEqual([{ rest: true, value: 2 }])
+    expect(
+      readLineNotes([{ rest: true, value: 8 }, { string: 5, fret: 7 }, { rest: true }])
+    ).toEqual([{ rest: true, value: 8 }, { string: 5, fret: 7 }, { rest: true }])
+    expect(
+      flattenLinePitches([
+        { string: 5, fret: 7 },
+        { rest: true, value: 8 },
+        { string: 4, fret: 8 },
+      ])
+    ).toEqual([
+      { string: 5, fret: 7, at: 1 },
+      { string: 4, fret: 8, at: 3 },
+    ])
+    expect(
+      stackLineNote([{ rest: true, value: 8 }], 0, { string: 5, fret: 7 })
+    ).toEqual([{ string: 5, fret: 7, value: 8 }])
   })
 
   it('maps line notes to MIDI in order', () => {

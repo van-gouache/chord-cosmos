@@ -21,7 +21,6 @@ import {
   DEFAULT_STRUM_PATTERN,
   MAX_BPM,
   MAX_SLOT_BEATS,
-  MAX_STEPS_PER_MEASURE,
   MIN_BPM,
   MIN_SLOT_BEATS,
   MIN_STEPS_PER_MEASURE,
@@ -33,7 +32,10 @@ import {
   firstEmptyInBar,
   barAt,
   locationKey,
+  locationRange,
   locationsEqual,
+  allSlotLocations,
+  locationExists,
   nextFilledChordMap,
   playTimeline,
   slotBeats,
@@ -66,6 +68,7 @@ import {
 import { beatsLabel } from '../theory/lineNotation'
 import { ChordDiagram, type DiagramSize } from './ChordDiagram'
 import { LineFretboardModal } from './LineFretboardModal'
+import { UNDO_SHORTCUT, undoRedoAction } from './undoKeys'
 import { LineNotation } from './LineNotation'
 import { diagramFretWindow } from './fretWindow'
 import { SongManager } from './SongManager'
@@ -92,9 +95,11 @@ interface Props {
   onDeleteSong: (id: string) => void
   onRename: (id: string, name: string) => void
   onRemoveSlot: (location: SlotLocation) => void
+  onRemoveSlots: (locations: SlotLocation[]) => void
   onInsertSlot: (location: SlotLocation, side: 'before' | 'after') => void
   onRemoveStep: (location: SlotLocation) => void
   onMoveSlot: (from: SlotLocation, to: SlotLocation) => void
+  onMoveSlots: (froms: SlotLocation[], to: SlotLocation) => SlotLocation[]
   onPlaceIncoming: (location: SlotLocation, slot: SequenceSlot) => void
   onDuplicateSlot: (location: SlotLocation) => void
   onSetSlotNote: (location: SlotLocation, note: string) => void
@@ -175,9 +180,10 @@ export function SequencePanel({
   onDeleteSong,
   onRename,
   onRemoveSlot,
+  onRemoveSlots,
   onInsertSlot,
   onRemoveStep,
-  onMoveSlot,
+  onMoveSlots,
   onPlaceIncoming,
   onDuplicateSlot,
   onSetSlotNote,
@@ -228,6 +234,8 @@ export function SequencePanel({
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
   const [dragFrom, setDragFrom] = useState<SlotLocation | null>(null)
+  const [dragBlock, setDragBlock] = useState<SlotLocation[] | null>(null)
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [dropTarget, setDropTarget] = useState<SlotLocation | null>(null)
   const [dragMeasureFrom, setDragMeasureFrom] = useState<{
     sectionId: string
@@ -285,6 +293,73 @@ export function SequencePanel({
     }
   }, [])
 
+  const selectedKey = selected ? locationKey(selected) : null
+  const selectedLocations = useMemo(() => {
+    if (!song || selectedKeys.size === 0) return []
+    return allSlotLocations(song).filter((location) =>
+      selectedKeys.has(locationKey(location))
+    )
+  }, [selectedKeys, song])
+
+  useEffect(() => {
+    if (!selectedKey) {
+      setSelectedKeys(new Set())
+      return
+    }
+    setSelectedKeys((current) =>
+      current.has(selectedKey) ? current : new Set([selectedKey])
+    )
+  }, [selectedKey])
+
+  useEffect(() => {
+    if (!song) return
+    setSelectedKeys((current) => {
+      let changed = false
+      const next = new Set<string>()
+      for (const key of current) {
+        const [sectionId, barId, rawIndex] = key.split(':')
+        const slotIndex = Number(rawIndex)
+        if (
+          sectionId &&
+          barId &&
+          Number.isInteger(slotIndex) &&
+          locationExists(song, { sectionId, barId, slotIndex })
+        ) {
+          next.add(key)
+        } else {
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [song])
+
+  const selectLocation = (
+    location: SlotLocation,
+    event?: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }
+  ) => {
+    const key = locationKey(location)
+    if (event?.shiftKey && selected && song) {
+      setSelectedKeys(
+        new Set(locationRange(song, selected, location).map(locationKey))
+      )
+      return
+    }
+    if (event?.metaKey || event?.ctrlKey) {
+      const already = selectedKeys.has(key)
+      setSelectedKeys((current) => {
+        const next = new Set(current)
+        if (already && next.size > 1) next.delete(key)
+        else next.add(key)
+        return next
+      })
+      if (!already) onSelectSlot(location)
+      return
+    }
+    setSelectedKeys(new Set([key]))
+    onSelectSlot(location)
+  }
+
   useEffect(() => {
     if (!notebookMode || managerOpen) return
     const onKey = (event: KeyboardEvent) => {
@@ -300,18 +375,42 @@ export function SequencePanel({
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return
       const action = undoRedoAction(event)
-      if (!action) return
-      if (action === 'undo' && canUndo) {
+      if (action) {
+        if (action === 'undo' && canUndo) {
+          event.preventDefault()
+          onUndo()
+        } else if (action === 'redo' && canRedo) {
+          event.preventDefault()
+          onRedo()
+        }
+        return
+      }
+      if (isTypingTarget(event.target)) return
+      if (event.key === 'Escape' && selectedKeys.size > 1 && selected) {
         event.preventDefault()
-        onUndo()
-      } else if (action === 'redo' && canRedo) {
+        setSelectedKeys(new Set([locationKey(selected)]))
+        return
+      }
+      if (
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        selectedLocations.length > 0
+      ) {
         event.preventDefault()
-        onRedo()
+        onRemoveSlots(selectedLocations)
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [canRedo, canUndo, onRedo, onUndo])
+  }, [
+    canRedo,
+    canUndo,
+    onRedo,
+    onRemoveSlots,
+    onUndo,
+    selected,
+    selectedKeys,
+    selectedLocations,
+  ])
 
   const stop = useCallback(() => {
     stopRef.current?.()
@@ -387,11 +486,21 @@ export function SequencePanel({
   }
 
   const dropOn = (to: SlotLocation) => {
-    if (dragFrom && !locationsEqual(dragFrom, to)) {
-      onMoveSlot(dragFrom, to)
-      onSelectSlot(to)
+    const block =
+      dragBlock && dragBlock.length > 0
+        ? dragBlock
+        : dragFrom
+          ? [dragFrom]
+          : null
+    if (block && (block.length > 1 || !locationsEqual(block[0], to))) {
+      const movedTo = onMoveSlots(block, to)
+      if (movedTo.length > 0) {
+        setSelectedKeys(new Set(movedTo.map(locationKey)))
+        onSelectSlot(movedTo[0])
+      }
     }
     setDragFrom(null)
+    setDragBlock(null)
     setDropTarget(null)
   }
 
@@ -603,6 +712,21 @@ export function SequencePanel({
               >
                 {copied ? 'Copied' : 'Copy'}
               </button>
+              {selectedLocations.length > 1 && (
+                <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-nebula-500/50 bg-nebula-500/10 px-2">
+                  <p className="text-xs font-medium text-nebula-200">
+                    {selectedLocations.length} selected
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSlots(selectedLocations)}
+                    title="Clear the selected steps (Delete)"
+                    className="rounded-md px-1.5 text-xs font-semibold text-cosmos-200 transition hover:bg-rose-900/60 hover:text-rose-200"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
               {slotCount > 0 && (
                 <button
                   type="button"
@@ -674,7 +798,8 @@ export function SequencePanel({
             selected={selected}
             playingLocation={playingLocation}
             playingCellRef={bindPlayingCell}
-            onSelect={onSelectSlot}
+            selectedKeys={selectedKeys}
+            onSelect={selectLocation}
             onPreview={(location, slot) => {
               if (isLineGroupId(slot.groupId)) {
                 if (slot.lineNotes?.length) {
@@ -787,14 +912,12 @@ export function SequencePanel({
             <div className="flex flex-wrap items-stretch gap-3">
               {section.bars.map((bar, barIndex) => {
                 const steps = barSteps(bar)
-                const hasTrailingGap = bar.slots[bar.slots.length - 1] === null
                 const canInsertBeside = (
                   slotIndex: number,
                   side: 'before' | 'after'
                 ) => {
                   const at = side === 'after' ? slotIndex + 1 : slotIndex
-                  if (at < bar.slots.length && hasTrailingGap) return true
-                  return bar.slots.length < MAX_STEPS_PER_MEASURE
+                  return at >= 0 && at <= bar.slots.length
                 }
                 const showMeasureLabel =
                   !false ||
@@ -1063,12 +1186,12 @@ export function SequencePanel({
                       const isPlaying =
                         playingLocation !== null &&
                         locationsEqual(playingLocation, location)
-                      const isSelected =
-                        selected !== null && locationsEqual(selected, location)
+                      const isSelected = selectedKeys.has(locationKey(location))
                       const isDrop =
                         dropTarget !== null && locationsEqual(dropTarget, location)
                       const isDragSource =
-                        dragFrom !== null && locationsEqual(dragFrom, location)
+                        dragBlock?.some((item) => locationsEqual(item, location)) ||
+                        (dragFrom !== null && locationsEqual(dragFrom, location))
 
                       return (
                         <SlotCell
@@ -1093,9 +1216,7 @@ export function SequencePanel({
                           isDrop={!false && isDrop}
                           isDragSource={!false && isDragSource}
                           cellRef={isPlaying ? bindPlayingCell : undefined}
-                          onSelect={() => {
-                            onSelectSlot(location)
-                          }}
+                          onSelect={(event) => selectLocation(location, event)}
                           onPreview={() => {
                             if (!slot) return
                             const notes = midiByIndex[eventIndex]
@@ -1106,7 +1227,16 @@ export function SequencePanel({
                               strumPattern: slotStrumPattern(slot),
                             })
                           }}
-                          onRemove={() => onRemoveSlot(location)}
+                          onRemove={() => {
+                            if (
+                              selectedKeys.size > 1 &&
+                              selectedKeys.has(locationKey(location))
+                            ) {
+                              onRemoveSlots(selectedLocations)
+                              return
+                            }
+                            onRemoveSlot(location)
+                          }}
                           canInsert={(side) => canInsertBeside(slotIndex, side)}
                           onInsert={(side) => onInsertSlot(location, side)}
                           onRemoveStep={() => onRemoveStep(location)}
@@ -1129,9 +1259,18 @@ export function SequencePanel({
                           }
                           onOctaveShift={(delta) => onShiftSlotOctave(location, delta)}
                           onRandomize={() => onRandomizeSlot(location)}
-                          onDragStart={() => setDragFrom(location)}
+                          onDragStart={() => {
+                            setDragFrom(location)
+                            const key = locationKey(location)
+                            setDragBlock(
+                              selectedKeys.size > 1 && selectedKeys.has(key)
+                                ? selectedLocations
+                                : [location]
+                            )
+                          }}
                           onDragEnd={() => {
                             setDragFrom(null)
+                            setDragBlock(null)
                             setDropTarget(null)
                           }}
                           onDragOver={() => setDropTarget(location)}
@@ -1226,7 +1365,7 @@ export function SequencePanel({
           <p className="text-center text-xs text-cosmos-400">
             {false
               ? 'This sequence has no chords yet.'
-              : `Add a voicing to the highlighted step, or the next empty one. Each group can hold up to ${MAX_STEPS_PER_MEASURE} chords.`}
+              : 'Add a voicing to the highlighted step, or the next empty one.'}
           </p>
         )}
           </>
@@ -1253,7 +1392,7 @@ interface SlotCellProps {
   isDrop: boolean
   isDragSource: boolean
   cellRef?: (el: HTMLElement | null) => void
-  onSelect: () => void
+  onSelect: (event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void
   onPreview: () => void
   onRemove: () => void
   canInsert: (side: 'before' | 'after') => boolean
@@ -1352,7 +1491,7 @@ function SlotCell({
     slot && fingering
       ? diagramFretWindow(fingering, {
           highlightedFrets: (isLine
-            ? slot.lineNotes
+            ? flattenLinePitches(slot.lineNotes)
             : slot.highlightedNotes
           )?.map((note) => note.fret),
           extendLow: slot.extendLow,
@@ -1403,7 +1542,9 @@ function SlotCell({
         presenting
           ? undefined
           : slot
-            ? 'Drag onto another chord to swap, or onto an empty step to move'
+            ? isSelected && isDragSource
+              ? 'Drag the selected steps to move them together'
+              : 'Shift-click to select a range. Drag onto another step to reorder, or onto another group to add it there.'
             : 'Drop a shape here'
       }
       onDragStart={(event) => {
@@ -1702,10 +1843,7 @@ function SlotCell({
                     onValueChange={setLineValue}
                     onTupletChange={setLineTuplet}
                     onStackChange={setLineStack}
-                    onSelectedChange={(index) => {
-                      setLineSelected(index)
-                      setLineStack(true)
-                    }}
+                    onSelectedChange={setLineSelected}
                     onAdd={(string, fret) => {
                       const next = placeLineNote(
                         slot.lineNotes,
@@ -1778,24 +1916,21 @@ function isInteractiveDragTarget(target: EventTarget | null): boolean {
   )
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return (
+    target.isContentEditable ||
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT'
+  )
+}
+
 function isSlotDragTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element && Boolean(target.closest('[data-slot-cell]'))
   )
-}
-
-const UNDO_SHORTCUT = /Mac|iPhone|iPad/.test(
-  typeof navigator === 'undefined' ? '' : navigator.platform
-)
-  ? { undo: '⌘Z', redo: '⇧⌘Z' }
-  : { undo: 'Ctrl+Z', redo: 'Ctrl+Y' }
-
-function undoRedoAction(event: KeyboardEvent): 'undo' | 'redo' | null {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey) return null
-  const key = event.key.toLowerCase()
-  if (key === 'z') return event.shiftKey ? 'redo' : 'undo'
-  if (key === 'y' && !event.shiftKey) return 'redo'
-  return null
 }
 
 const slotSelectClass =
@@ -2058,11 +2193,7 @@ function InsertSlotButtons({
           disabled={!allowed}
           onClick={() => onInsert(side)}
           aria-label={`Insert an empty step ${word} ${chordName}`}
-          title={
-            allowed
-              ? `Insert an empty step ${word} ${chordName}`
-              : `This group is full — raise its chord count to insert ${word} ${chordName}`
-          }
+          title={`Insert an empty step ${word} ${chordName}`}
           className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs leading-none text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
         >
           {glyph}
@@ -2193,7 +2324,6 @@ function MeasureStepsControl({
         id={`group-steps-${measureId}`}
         type="number"
         min={MIN_STEPS_PER_MEASURE}
-        max={MAX_STEPS_PER_MEASURE}
         defaultValue={steps}
         onBlur={(event) => commit(event.target.value)}
         onKeyDown={(event) => {
@@ -2205,7 +2335,6 @@ function MeasureStepsControl({
       <button
         type="button"
         aria-label={`More chords in ${groupLabel}`}
-        disabled={steps >= MAX_STEPS_PER_MEASURE}
         onClick={() => onChange(steps + 1)}
         className="flex h-6 w-6 items-center justify-center rounded-md border border-cosmos-700 text-xs text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:opacity-30"
       >

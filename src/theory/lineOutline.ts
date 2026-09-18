@@ -7,9 +7,9 @@ import { MAX_PLAYABLE_FRET, STANDARD_TUNING, STRING_COUNT, type Fingering } from
 import type { VoicingShape } from './vsystem'
 
 /** American duration: 1 = whole, 4 = quarter, 8 = eighth. */
-export type LineNoteValue = 1 | 2 | 4 | 8 | 16
+export type LineNoteValue = 1 | 2 | 4 | 8 | 16 | 32
 
-export const LINE_NOTE_VALUES: readonly LineNoteValue[] = [1, 2, 4, 8, 16]
+export const LINE_NOTE_VALUES: readonly LineNoteValue[] = [1, 2, 4, 8, 16, 32]
 
 /** Notes per tuplet group: 3 = triplet, 6 = sextuplet. */
 export type LineTuplet = 3 | 5 | 6 | 7
@@ -23,14 +23,24 @@ export interface LinePitch {
   fret: number
 }
 
-export interface LineNote extends LinePitch {
+interface LineRhythm {
   /** Written length. Omitted means a quarter. */
   value?: LineNoteValue
   /** Tuplet this note belongs to. Omitted means straight time. */
   tuplet?: LineTuplet
+}
+
+export interface LineSound extends LinePitch, LineRhythm {
   /** Extra pitches sounding with this note. */
   stack?: LinePitch[]
 }
+
+/** A written rest: duration only, no pitch. */
+export interface LineRest extends LineRhythm {
+  rest: true
+}
+
+export type LineNote = LineSound | LineRest
 
 export const LINE_GROUP_ID = 'Line'
 export const EMPTY_LINE_TAB = 'x-x-x-x-x-x'
@@ -85,7 +95,12 @@ export function isLinePitch(value: unknown): value is LinePitch {
   )
 }
 
+export function isLineRest(value: unknown): value is LineRest {
+  return Boolean(value && typeof value === 'object' && (value as LineRest).rest === true)
+}
+
 export function lineNotePitches(note: LineNote): LinePitch[] {
+  if (isLineRest(note)) return []
   const seen = new Set<number>([note.string])
   const extra: LinePitch[] = []
   for (const pitch of note.stack ?? []) {
@@ -116,7 +131,14 @@ export function lineMidiNotes(notes: readonly LineNote[] | undefined): number[] 
 }
 
 export function isLineNoteValue(value: unknown): value is LineNoteValue {
-  return value === 1 || value === 2 || value === 4 || value === 8 || value === 16
+  return (
+    value === 1 ||
+    value === 2 ||
+    value === 4 ||
+    value === 8 ||
+    value === 16 ||
+    value === 32
+  )
 }
 
 export function isLineTuplet(value: unknown): value is LineTuplet {
@@ -128,10 +150,19 @@ function writeStack(note: LineNote): LinePitch[] | undefined {
   return extra.length > 0 ? extra : undefined
 }
 
-function writeLineNote(note: LineNote): LineNote {
-  const next: LineNote = { string: note.string, fret: note.fret }
-  if (isLineNoteValue(note.value) && note.value !== 4) next.value = note.value
-  if (isLineTuplet(note.tuplet)) next.tuplet = note.tuplet
+function writeRhythm<T extends LineRhythm>(target: T, note: LineRhythm): T {
+  if (isLineNoteValue(note.value) && note.value !== 4) target.value = note.value
+  if (isLineTuplet(note.tuplet)) target.tuplet = note.tuplet
+  return target
+}
+
+function writeLineNote(note: LineNote | (LineRest & Partial<LinePitch>)): LineNote {
+  if (isLineRest(note)) {
+    const rest: LineRest = { rest: true }
+    return writeRhythm(rest, note)
+  }
+  const next: LineSound = { string: note.string, fret: note.fret }
+  writeRhythm(next, note)
   const stack = writeStack(note)
   if (stack) next.stack = stack
   return next
@@ -154,6 +185,14 @@ function noteFromPitches(
 
 export function addPitchToNote(note: LineNote, pitch: LinePitch): LineNote {
   if (!isLinePitch(pitch)) return writeLineNote(note)
+  if (isLineRest(note)) {
+    return writeLineNote({
+      string: pitch.string,
+      fret: pitch.fret,
+      value: note.value,
+      tuplet: note.tuplet,
+    })
+  }
   const voices = lineNotePitches(note)
   const sameString = voices.findIndex((item) => item.string === pitch.string)
   let next: LinePitch[]
@@ -195,7 +234,7 @@ export function placeLineNote(
   options?: { stack?: boolean; at?: number }
 ): LineNote[] {
   const current = notes ?? []
-  if (options?.stack && current.length > 0) {
+  if (options?.stack && current.length > 0 && isLinePitch(note)) {
     const at = Math.min(
       current.length - 1,
       Math.max(0, options.at ?? current.length - 1)
@@ -203,6 +242,47 @@ export function placeLineNote(
     return stackLineNote(current, at, note)
   }
   return appendLineNote(current, note)
+}
+
+/** Insert a rest after `afterIndex`, or at the start when the line is empty. */
+export function insertLineRest(
+  notes: LineNote[] | undefined,
+  rhythm: Pick<LineNote, 'value' | 'tuplet'> = {},
+  afterIndex?: number
+): LineNote[] {
+  const current = notes ?? []
+  const rest = writeLineNote({ rest: true, ...rhythm })
+  const at =
+    current.length === 0 || afterIndex === undefined
+      ? current.length
+      : Math.min(current.length, Math.max(0, afterIndex + 1))
+  return [...current.slice(0, at), rest, ...current.slice(at)]
+}
+
+/** Rewrite one event's duration. Pitches stay put. */
+export function setLineNoteRhythm(
+  notes: readonly LineNote[],
+  index: number,
+  rhythm: Pick<LineNote, 'value' | 'tuplet'>
+): LineNote[] {
+  if (index < 0 || index >= notes.length) return [...notes]
+  return notes.map((note, i) => {
+    if (i !== index) return note
+    const next = isLineRest(note)
+      ? { rest: true as const, value: note.value, tuplet: note.tuplet }
+      : {
+          string: note.string,
+          fret: note.fret,
+          stack: note.stack,
+          value: note.value,
+          tuplet: note.tuplet,
+        }
+    return writeLineNote({
+      ...next,
+      value: rhythm.value ?? note.value,
+      tuplet: 'tuplet' in rhythm ? rhythm.tuplet : note.tuplet,
+    })
+  })
 }
 
 export function removeLineNoteAt(
@@ -222,7 +302,13 @@ export function readLineNotes(value: unknown): LineNote[] | undefined {
   const notes: LineNote[] = []
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
-    const note = item as Partial<LineNote>
+    const note = item as Partial<LineSound> & Partial<LineRest>
+    const value = isLineNoteValue(note.value) ? note.value : undefined
+    const tuplet = isLineTuplet(note.tuplet) ? note.tuplet : undefined
+    if (note.rest === true) {
+      notes.push(writeLineNote({ rest: true, value, tuplet }))
+      continue
+    }
     if (
       !Number.isInteger(note.string) ||
       !Number.isInteger(note.fret) ||
@@ -239,8 +325,8 @@ export function readLineNotes(value: unknown): LineNote[] | undefined {
       writeLineNote({
         string: note.string,
         fret: note.fret,
-        value: isLineNoteValue(note.value) ? note.value : undefined,
-        tuplet: isLineTuplet(note.tuplet) ? note.tuplet : undefined,
+        value,
+        tuplet,
         stack: Array.isArray(note.stack) ? note.stack : undefined,
       })
     )

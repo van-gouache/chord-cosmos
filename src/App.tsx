@@ -321,6 +321,7 @@ export default function App() {
             onDeleteSong={songs.deleteSong}
             onRename={songs.renameSong}
             onRemoveSlot={songs.removeSlot}
+            onRemoveSlots={songs.removeSlots}
             onInsertSlot={(location, side) => {
               const opened = songs.insertSlot(location, side)
               if (!opened) return
@@ -329,6 +330,7 @@ export default function App() {
             }}
             onRemoveStep={songs.removeStep}
             onMoveSlot={songs.relocateSlot}
+            onMoveSlots={songs.relocateSlots}
             onPlaceIncoming={(location, slot) => {
               const roman = romanForPlacement(location, slot.chordSymbol)
               songs.placeIncoming(

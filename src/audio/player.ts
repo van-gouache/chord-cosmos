@@ -184,13 +184,17 @@ export function playLineMelody(notes: readonly LineNote[], bpm = DEFAULT_BPM): v
       (pitch) => STANDARD_TUNING[pitch.string] + pitch.fret
     )
     const seconds = lineNoteBeats(note) * beat
-    playNotes(midi, {
-      interrupt: index === 0,
-      startOffset: offset,
-      duration: Math.max(0.4, seconds + 0.2),
-      velocity: 1,
-      strumDelay: 0,
-    })
+    if (midi.length > 0) {
+      playNotes(midi, {
+        interrupt: index === 0,
+        startOffset: offset,
+        duration: Math.max(0.4, seconds + 0.2),
+        velocity: 1,
+        strumDelay: 0,
+      })
+    } else if (index === 0) {
+      stopAll()
+    }
     offset += seconds
   })
 }

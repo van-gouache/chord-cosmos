@@ -24,6 +24,7 @@ import {
   lineSlotLabel,
   readLineNotes,
   appendLineNote,
+  isLineRest,
   type LineNote,
 } from '../theory/lineOutline'
 import { lineNotationBeats } from '../theory/lineNotation'
@@ -60,7 +61,6 @@ export const LEGACY_STORAGE_KEY = 'chord-cosmos.songs.v1'
 export const BEATS_PER_MEASURE = 4
 export const DEFAULT_STEPS_PER_MEASURE = 4
 export const MIN_STEPS_PER_MEASURE = 1
-export const MAX_STEPS_PER_MEASURE = 32
 /** @deprecated Use DEFAULT_STEPS_PER_MEASURE — kept for existing tests. */
 export const BEATS_PER_BAR = DEFAULT_STEPS_PER_MEASURE
 export const MIN_BPM = 40
@@ -182,10 +182,7 @@ function newId(): string {
 export function clampSteps(value: unknown): number {
   const n = typeof value === 'number' ? value : DEFAULT_STEPS_PER_MEASURE
   if (!Number.isFinite(n)) return DEFAULT_STEPS_PER_MEASURE
-  return Math.min(
-    MAX_STEPS_PER_MEASURE,
-    Math.max(MIN_STEPS_PER_MEASURE, Math.round(n))
-  )
+  return Math.max(MIN_STEPS_PER_MEASURE, Math.round(n))
 }
 
 export function barSteps(bar: Bar): number {
@@ -405,10 +402,11 @@ export function cloneSlot(slot: SequenceSlot): SequenceSlot {
     ...slot,
     id: newId(),
     highlightedNotes: slot.highlightedNotes?.map((note) => ({ ...note })),
-    lineNotes: slot.lineNotes?.map((note) => ({
-      ...note,
-      stack: note.stack?.map((pitch) => ({ ...pitch })),
-    })),
+    lineNotes: slot.lineNotes?.map((note) =>
+      isLineRest(note)
+        ? { ...note }
+        : { ...note, stack: note.stack?.map((pitch) => ({ ...pitch })) }
+    ),
   }
 }
 
@@ -851,7 +849,7 @@ export function placeSlot(
 /**
  * Opens an empty step beside an existing one, pushing later chords along.
  * Reuses a trailing empty step when there is one so the group only widens
- * when it has to. Null when the group is already at its step limit.
+ * when it has to.
  */
 export function insertSlotAt(
   song: Song,
@@ -868,7 +866,6 @@ export function insertSlotAt(
   // Only reclaim a trailing gap that something actually shifted into,
   // otherwise appending past the last chord would pop the step it just opened.
   if (at < slots.length - 1 && slots[slots.length - 1] === null) slots.pop()
-  else if (slots.length > MAX_STEPS_PER_MEASURE) return null
 
   return {
     song: mapBar(song, location.barId, (current) => ({ ...current, slots })),
@@ -904,12 +901,7 @@ export function canInsertSlotAt(
   const bar = findBar(song, location.barId)
   if (!bar) return false
   const at = side === 'after' ? location.slotIndex + 1 : location.slotIndex
-  // Appending past the last step has to widen the group; anywhere else can
-  // shift into a trailing gap instead.
-  if (at < bar.slots.length && bar.slots[bar.slots.length - 1] === null) {
-    return true
-  }
-  return bar.slots.length < MAX_STEPS_PER_MEASURE
+  return at >= 0 && at <= bar.slots.length
 }
 
 export function parseStrumPattern(value: string | undefined): StrumStroke[] {
@@ -1063,6 +1055,92 @@ export function locationKey(location: SlotLocation): string {
   return `${location.sectionId}:${location.barId}:${location.slotIndex}`
 }
 
+/** Every step in play order, empty cells included. */
+export function allSlotLocations(song: Song): SlotLocation[] {
+  const locations: SlotLocation[] = []
+  for (const section of song.sections) {
+    for (const bar of section.bars) {
+      for (let slotIndex = 0; slotIndex < bar.slots.length; slotIndex += 1) {
+        locations.push({ sectionId: section.id, barId: bar.id, slotIndex })
+      }
+    }
+  }
+  return locations
+}
+
+/** Inclusive play-order span between two steps. */
+export function locationRange(
+  song: Song,
+  from: SlotLocation,
+  to: SlotLocation
+): SlotLocation[] {
+  const all = allSlotLocations(song)
+  const start = all.findIndex((location) => locationsEqual(location, from))
+  const end = all.findIndex((location) => locationsEqual(location, to))
+  if (start < 0 && end < 0) return []
+  if (start < 0) return [to]
+  if (end < 0) return [from]
+  return all.slice(Math.min(start, end), Math.max(start, end) + 1)
+}
+
+export function clearSlots(
+  song: Song,
+  locations: readonly SlotLocation[]
+): Song {
+  let next = song
+  for (const location of locations) {
+    if (!locationExists(next, location)) continue
+    if (slotAt(next, location) === null) continue
+    next = placeSlot(next, location, null)
+  }
+  return next
+}
+
+/**
+ * Reorder a contiguous play-order span so it starts at `to`.
+ * A single step in the same group still swaps. Dropping onto a different
+ * group inserts there — widening that group — and closes the source steps.
+ */
+export function moveSlotRange(
+  song: Song,
+  range: readonly SlotLocation[],
+  to: SlotLocation
+): { song: Song; movedTo: SlotLocation[] } {
+  if (range.length === 0) return { song, movedTo: [] }
+  if (range.some((location) => location.barId !== to.barId)) {
+    return transferSlotsToBar(song, range, to)
+  }
+  if (range.length === 1) {
+    return { song: moveSlot(song, range[0], to), movedTo: [to] }
+  }
+
+  const all = allSlotLocations(song)
+  const indices = range
+    .map((location) => all.findIndex((item) => locationsEqual(item, location)))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)
+  const dest = all.findIndex((location) => locationsEqual(location, to))
+  if (indices.length === 0 || dest < 0) return { song, movedTo: [...range] }
+
+  const start = indices[0]
+  const end = indices[indices.length - 1]
+  if (dest >= start && dest <= end) {
+    return { song, movedTo: all.slice(start, end + 1) }
+  }
+
+  const slots = all.map((location) => slotAt(song, location))
+  const block = slots.slice(start, end + 1)
+  const remainder = [...slots.slice(0, start), ...slots.slice(end + 1)]
+  const insertAt = dest > end ? dest - block.length : dest
+  remainder.splice(insertAt, 0, ...block)
+
+  let next = song
+  for (let i = 0; i < all.length; i += 1) {
+    next = placeSlot(next, all[i], remainder[i] ?? null)
+  }
+  return { song: next, movedTo: all.slice(insertAt, insertAt + block.length) }
+}
+
 /** Filled steps in play order, with each stored symbol parsed. */
 export function filledChordTimeline(
   song: Song
@@ -1114,7 +1192,17 @@ export function moveSlot(song: Song, from: SlotLocation, to: SlotLocation): Song
   if (locationsEqual(from, to)) {
     return song
   }
+  if (from.barId !== to.barId) {
+    return transferSlotsToBar(song, [from], to).song
+  }
+  return swapSlotContents(song, from, to)
+}
 
+function swapSlotContents(
+  song: Song,
+  from: SlotLocation,
+  to: SlotLocation
+): Song {
   const fromBar = findBar(song, from.barId)
   const toBar = findBar(song, to.barId)
   if (!fromBar || !toBar) return song
@@ -1123,9 +1211,61 @@ export function moveSlot(song: Song, from: SlotLocation, to: SlotLocation): Song
   if (!moving) return song
 
   const dest = toBar.slots[to.slotIndex] ?? null
-  let next = placeSlot(song, from, dest)
-  next = placeSlot(next, to, moving)
-  return next
+  return placeSlot(placeSlot(song, from, dest), to, moving)
+}
+
+/**
+ * Move filled cards into another group. An occupied drop target grows that
+ * group so the incoming chords sit in front of it. An empty target is filled
+ * first, then any extra chords are inserted after it. Source steps close.
+ */
+function transferSlotsToBar(
+  song: Song,
+  froms: readonly SlotLocation[],
+  to: SlotLocation
+): { song: Song; movedTo: SlotLocation[] } {
+  const destBar = findBar(song, to.barId)
+  if (!destBar || to.slotIndex < 0 || to.slotIndex >= destBar.slots.length) {
+    return { song, movedTo: [] }
+  }
+
+  const all = allSlotLocations(song)
+  const sources = all.filter(
+    (location) =>
+      froms.some((item) => locationsEqual(item, location)) &&
+      location.barId !== to.barId &&
+      slotAt(song, location) !== null
+  )
+  if (sources.length === 0) return { song, movedTo: [] }
+
+  const incoming = sources.map((location) => slotAt(song, location)!)
+  const destOccupied = destBar.slots[to.slotIndex] !== null
+  const slots = [...destBar.slots]
+  if (!destOccupied) {
+    slots[to.slotIndex] = incoming[0]
+    if (incoming.length > 1) {
+      slots.splice(to.slotIndex + 1, 0, ...incoming.slice(1))
+    }
+  } else {
+    slots.splice(to.slotIndex, 0, ...incoming)
+  }
+
+  let next = mapBar(song, to.barId, (current) => ({ ...current, slots }))
+  const takenKeys = new Set(sources.map((location) => locationKey(location)))
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    if (takenKeys.has(locationKey(all[i]))) {
+      next = removeStepAt(next, all[i])
+    }
+  }
+
+  return {
+    song: next,
+    movedTo: incoming.map((_, offset) => ({
+      sectionId: to.sectionId,
+      barId: to.barId,
+      slotIndex: to.slotIndex + offset,
+    })),
+  }
 }
 
 export function appendBarIfNeeded(song: Song): { song: Song; location: SlotLocation } {
@@ -1315,13 +1455,14 @@ function compareHighlights(a: HighlightedNote, b: HighlightedNote): number {
   return a.string - b.string || a.fret - b.fret
 }
 
-function shiftHighlightedNotes(
-  highlighted: HighlightedNote[] | undefined,
+function shiftHighlightedNotes<T extends HighlightedNote | LineNote>(
+  highlighted: T[] | undefined,
   deltaFrets: number
-): HighlightedNote[] | undefined {
+): T[] | undefined {
   if (!highlighted?.length) return highlighted
   const next = highlighted
     .map((note) => {
+      if (isLineRest(note)) return note
       const shiftFret = (fret: number) => {
         if (fret === 0) return 0
         const moved = fret + deltaFrets
@@ -1330,7 +1471,7 @@ function shiftHighlightedNotes(
       }
       const fret = shiftFret(note.fret)
       if (fret === null) return null
-      const stacked = (note as LineNote).stack
+      const stacked = 'stack' in note ? note.stack : undefined
       const stack = stacked
         ?.map((pitch) => {
           const nextFret = shiftFret(pitch.fret)
@@ -1343,7 +1484,7 @@ function shiftHighlightedNotes(
         ...(stack && stack.length > 0 ? { stack } : {}),
       }
     })
-    .filter((note): note is HighlightedNote => note !== null)
+    .filter((note): note is T => note !== null)
   return next.length > 0 ? next : undefined
 }
 

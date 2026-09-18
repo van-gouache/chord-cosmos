@@ -378,10 +378,7 @@ export function FretboardBuilder({ onAdd, onAddLine, bpm }: Props) {
           onValueChange={setLineValue}
           onTupletChange={setLineTuplet}
           onStackChange={setLineStack}
-          onSelectedChange={(index) => {
-            setLineSelected(index)
-            setLineStack(true)
-          }}
+          onSelectedChange={setLineSelected}
           onAdd={toggleFret}
           onChangeNotes={(next) => {
             setLineNotes(next)
@@ -443,7 +440,7 @@ function FretboardGrid({
         const activeFrets =
           mode === 'line'
             ? new Set(
-                lineNotes
+                flattenLinePitches(lineNotes)
                   .filter((note) => note.string === string)
                   .map((note) => note.fret)
               )

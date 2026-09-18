@@ -46,6 +46,17 @@ describe('line notation', () => {
         { string: 5, fret: 5, value: 8 },
       ])
     ).toBe(2)
+    expect(
+      lineNotationBeats([
+        { string: 5, fret: 0 },
+        { rest: true, value: 8 },
+        { string: 5, fret: 3 },
+      ])
+    ).toBe(2.5)
+    const [restColumn] = lineStaffColumns([{ rest: true, value: 2 }])
+    expect(restColumn.rest).toBe(true)
+    expect(restColumn.voices).toEqual([])
+    expect(columnLabel(restColumn)).toBe('rest')
   })
 
   it('reorders and sets durations without dropping frets', () => {
@@ -94,6 +105,8 @@ describe('line notation', () => {
     expect(lineNotationBeats([triplet, triplet, triplet])).toBe(1)
     const sextuplet = { string: 5, fret: 0, value: 16, tuplet: 6 } as const
     expect(lineNotationBeats(Array(6).fill(sextuplet))).toBe(1)
+    const thirtySecond = { string: 5, fret: 0, value: 32 } as const
+    expect(lineNotationBeats(Array(8).fill(thirtySecond))).toBe(1)
   })
 
   it('brackets consecutive tuplet notes in groups of their own size', () => {

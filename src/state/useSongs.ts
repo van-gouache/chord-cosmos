@@ -33,6 +33,8 @@ import {
   lastBarSteps,
   loadState,
   moveSlot,
+  moveSlotRange,
+  clearSlots,
   nextEmptyAfter,
   normalizeSong,
   patchSlot,
@@ -241,6 +243,14 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const removeSlots = useCallback(
+    (locations: SlotLocation[]) => {
+      if (!activeSong || locations.length === 0) return
+      updateSong(activeSong.id, (song) => clearSlots(song, locations))
+    },
+    [activeSong, updateSong]
+  )
+
   const insertSlot = useCallback(
     (location: SlotLocation, side: 'before' | 'after'): SlotLocation | null => {
       if (!activeSong) return null
@@ -268,6 +278,20 @@ export function useSongs() {
     (from: SlotLocation, to: SlotLocation) => {
       if (!activeSong) return
       updateSong(activeSong.id, (song) => moveSlot(song, from, to))
+    },
+    [activeSong, updateSong]
+  )
+
+  const relocateSlots = useCallback(
+    (froms: SlotLocation[], to: SlotLocation): SlotLocation[] => {
+      if (!activeSong || froms.length === 0) return froms
+      let movedTo = froms
+      updateSong(activeSong.id, (song) => {
+        const result = moveSlotRange(song, froms, to)
+        movedTo = result.movedTo
+        return result.song
+      })
+      return movedTo
     },
     [activeSong, updateSong]
   )
@@ -638,9 +662,11 @@ export function useSongs() {
     addLine,
     placeIncoming,
     removeSlot,
+    removeSlots,
     insertSlot,
     removeStep,
     relocateSlot,
+    relocateSlots,
     duplicateSlot,
     setSlotNote,
     setSlotBeats,

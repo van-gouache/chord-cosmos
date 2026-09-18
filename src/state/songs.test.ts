@@ -30,6 +30,10 @@ import {
   locationsEqual,
   formatStrumPattern,
   moveSlot,
+  moveSlotRange,
+  locationRange,
+  allSlotLocations,
+  clearSlots,
   normalizeStrumPattern,
   packEntriesIntoSection,
   parseStrumPattern,
@@ -239,6 +243,18 @@ describe('song grid helpers', () => {
     expect(slotBeats({ ...straight!, lineNotes: undefined })).toBe(
       DEFAULT_SLOT_BEATS
     )
+
+    const withRest = slotFromLineNotes([
+      { string: 5, fret: 7 },
+      { rest: true, value: 8 },
+      { string: 5, fret: 8 },
+    ])
+    expect(slotBeats(withRest!)).toBe(2.5)
+    expect(withRest?.lineNotes).toEqual([
+      { string: 5, fret: 7 },
+      { rest: true, value: 8 },
+      { string: 5, fret: 8 },
+    ])
   })
 
   it('clones a song with fresh ids and the same chords', () => {
@@ -300,11 +316,11 @@ describe('song grid helpers', () => {
     expect(wider.sections[0].bars[1].slots).toHaveLength(4)
   })
 
-  it('clamps a measure to between 1 and 32 steps', () => {
+  it('clamps a measure to at least one step', () => {
     const song = createSong()
     const barId = song.sections[0].bars[0].id
     expect(setBarSteps(song, barId, 0).sections[0].bars[0].slots).toHaveLength(1)
-    expect(setBarSteps(song, barId, 99).sections[0].bars[0].slots).toHaveLength(32)
+    expect(setBarSteps(song, barId, 99).sections[0].bars[0].slots).toHaveLength(99)
     expect(setBarSteps(song, barId, 3).sections[0].bars[0].slots).toHaveLength(3)
   })
 
@@ -339,7 +355,7 @@ describe('song grid helpers', () => {
     ).toEqual(['Em7', null, 'A7', 'DΔ7', 'GΔ7'])
   })
 
-  it('refuses to insert once a group holds the maximum number of chords', () => {
+  it('inserts even when a group already holds many chords', () => {
     const filled = {
       ...createSong('Full'),
       sections: [
@@ -357,8 +373,10 @@ describe('song grid helpers', () => {
       barId: filled.sections[0].bars[0].id,
       slotIndex: 0,
     }
-    expect(canInsertSlotAt(filled, location, 'after')).toBe(false)
-    expect(insertSlotAt(filled, location, 'after')).toBeNull()
+    expect(canInsertSlotAt(filled, location, 'after')).toBe(true)
+    const opened = insertSlotAt(filled, location, 'after')
+    expect(opened?.song.sections[0].bars[0].slots).toHaveLength(33)
+    expect(opened?.song.sections[0].bars[0].slots[1]).toBeNull()
 
     const roomy = songWithSlots(['Em7', 'A7'])
     const roomyLocation = {
@@ -398,7 +416,7 @@ describe('song grid helpers', () => {
     ).toEqual(['Em7', 'A7', 'DΔ7', null])
   })
 
-  it('cannot append past the last step of a group already at the maximum', () => {
+  it('appends past the last step of a large group', () => {
     const full = {
       ...createSong('Full'),
       sections: [
@@ -414,10 +432,12 @@ describe('song grid helpers', () => {
     const bar = full.sections[0].bars[0]
     expect(bar.slots).toHaveLength(32)
     const last = { sectionId: full.sections[0].id, barId: bar.id, slotIndex: 31 }
-    expect(canInsertSlotAt(full, last, 'after')).toBe(false)
-    expect(insertSlotAt(full, last, 'after')).toBeNull()
+    expect(canInsertSlotAt(full, last, 'after')).toBe(true)
+    expect(
+      insertSlotAt(full, last, 'after')?.song.sections[0].bars[0].slots
+    ).toHaveLength(33)
 
-    // Anywhere earlier can still shift into that trailing gap.
+    // Anywhere earlier still shifts into that trailing gap instead of growing.
     const inner = { ...last, slotIndex: 0 }
     expect(canInsertSlotAt(full, inner, 'after')).toBe(true)
     expect(
@@ -566,6 +586,137 @@ describe('song grid helpers', () => {
       'Em7',
       null,
     ])
+  })
+
+  it('selects an inclusive play-order span', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7'])
+    const sectionId = song.sections[0].id
+    const barId = song.sections[0].bars[0].id
+    const loc = (slotIndex: number) => ({ sectionId, barId, slotIndex })
+    expect(allSlotLocations(song)).toHaveLength(BEATS_PER_BAR)
+    expect(locationRange(song, loc(0), loc(2)).map((item) => item.slotIndex)).toEqual([
+      0, 1, 2,
+    ])
+    expect(locationRange(song, loc(3), loc(1)).map((item) => item.slotIndex)).toEqual([
+      1, 2, 3,
+    ])
+  })
+
+  it('clears several steps in one pass', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7'])
+    const sectionId = song.sections[0].id
+    const barId = song.sections[0].bars[0].id
+    const loc = (slotIndex: number) => ({ sectionId, barId, slotIndex })
+    const cleared = clearSlots(song, [loc(0), loc(2)])
+    expect(cleared.sections[0].bars[0].slots.map((item) => item?.chordSymbol ?? null)).toEqual(
+      [null, 'A7', null, null]
+    )
+  })
+
+  it('moves a selected span so it starts at the drop target', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7', 'G7'])
+    const sectionId = song.sections[0].id
+    const barId = song.sections[0].bars[0].id
+    const loc = (slotIndex: number) => ({ sectionId, barId, slotIndex })
+    const symbols = (next: Song) =>
+      next.sections[0].bars[0].slots.map((item) => item?.chordSymbol ?? null)
+
+    const later = moveSlotRange(song, [loc(0), loc(1)], loc(3))
+    expect(symbols(later.song)).toEqual(['D7', 'Em7', 'A7', 'G7'])
+    expect(later.movedTo.map((item) => item.slotIndex)).toEqual([1, 2])
+
+    const earlier = moveSlotRange(song, [loc(2), loc(3)], loc(0))
+    expect(symbols(earlier.song)).toEqual(['D7', 'G7', 'Em7', 'A7'])
+    expect(earlier.movedTo.map((item) => item.slotIndex)).toEqual([0, 1])
+
+    const inside = moveSlotRange(song, [loc(0), loc(1)], loc(1))
+    expect(inside.song).toBe(song)
+  })
+
+  it('widens another group when a chord is dropped onto a filled step there', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7', 'G7', 'CΔ7'])
+    const [source, dest] = song.sections[0].bars
+    const moved = moveSlot(
+      song,
+      { sectionId: song.sections[0].id, barId: source.id, slotIndex: 0 },
+      { sectionId: song.sections[0].id, barId: dest.id, slotIndex: 0 }
+    )
+    expect(moved.sections[0].bars[0].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'A7',
+      'D7',
+      'G7',
+    ])
+    expect(moved.sections[0].bars[1].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'CΔ7',
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it('fills an empty step in another group without widening it', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7', 'G7', 'CΔ7'])
+    const [source, dest] = song.sections[0].bars
+    const moved = moveSlot(
+      song,
+      { sectionId: song.sections[0].id, barId: source.id, slotIndex: 0 },
+      { sectionId: song.sections[0].id, barId: dest.id, slotIndex: 1 }
+    )
+    expect(moved.sections[0].bars[0].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'A7',
+      'D7',
+      'G7',
+    ])
+    expect(moved.sections[0].bars[1].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'CΔ7',
+      'Em7',
+      null,
+      null,
+    ])
+  })
+
+  it('widens another group by each selected chord dropped onto it', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7', 'G7', 'CΔ7'])
+    const sectionId = song.sections[0].id
+    const [source, dest] = song.sections[0].bars
+    const result = moveSlotRange(
+      song,
+      [
+        { sectionId, barId: source.id, slotIndex: 0 },
+        { sectionId, barId: source.id, slotIndex: 1 },
+      ],
+      { sectionId, barId: dest.id, slotIndex: 0 }
+    )
+    expect(result.song.sections[0].bars[0].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'D7',
+      'G7',
+    ])
+    expect(result.song.sections[0].bars[1].slots.map((item) => item?.chordSymbol ?? null)).toEqual([
+      'Em7',
+      'A7',
+      'CΔ7',
+      null,
+      null,
+      null,
+    ])
+    expect(result.movedTo.map((item) => item.slotIndex)).toEqual([0, 1])
+  })
+
+  it('widens a large destination group when a chord is dropped onto it', () => {
+    const song = songWithSlots(['Em7', 'A7', 'D7', 'G7', 'CΔ7'])
+    const sectionId = song.sections[0].id
+    const [source, dest] = song.sections[0].bars
+    const full = setBarSteps(song, dest.id, 32)
+    const moved = moveSlot(
+      full,
+      { sectionId, barId: source.id, slotIndex: 0 },
+      { sectionId, barId: dest.id, slotIndex: 0 }
+    )
+    expect(moved.sections[0].bars[1].slots).toHaveLength(33)
+    expect(moved.sections[0].bars[1].slots[0]?.chordSymbol).toBe('Em7')
+    expect(moved.sections[0].bars[1].slots[1]?.chordSymbol).toBe('CΔ7')
+    expect(moved.sections[0].bars[0].slots[0]?.chordSymbol).toBe('A7')
   })
 
   it('leaves the song unchanged when moving a slot onto itself', () => {

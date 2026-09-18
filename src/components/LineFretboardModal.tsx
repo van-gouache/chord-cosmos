@@ -1,22 +1,39 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { ChordDiagram } from './ChordDiagram'
 import { LineNotation, LineRhythmPicker } from './LineNotation'
+import { UNDO_SHORTCUT, undoRedoAction } from './undoKeys'
+import { MAX_HISTORY } from '../state/history'
 import {
   emptyLineFingering,
   flattenLinePitches,
   lineShape,
+  insertLineRest,
+  setLineNoteRhythm,
   type LineNote,
   type LineNoteValue,
   type LineTuplet,
 } from '../theory/lineOutline'
 import { MAX_PLAYABLE_FRET, STRING_COUNT } from '../theory/fretboard'
-import { tupletLabel, valueGlyph } from '../theory/lineNotation'
+import {
+  lineNoteTuplet,
+  lineNoteValue,
+  tupletLabel,
+  valueGlyph,
+} from '../theory/lineNotation'
 
 const STRING_LABELS = ['E', 'A', 'D', 'G', 'B', 'e']
 const INLAYS = new Set([3, 5, 7, 9, 12, 15, 17, 19, 21, 24])
 const ALL_FRETS = Array.from({ length: MAX_PLAYABLE_FRET }, (_, i) => i + 1)
+
+function cloneLineNotes(notes: readonly LineNote[]): LineNote[] {
+  return notes.map((note) =>
+    'rest' in note && note.rest
+      ? { ...note }
+      : { ...note, stack: note.stack?.map((pitch) => ({ ...pitch })) }
+  )
+}
 
 export function visitMarks(
   notes: readonly LineNote[],
@@ -229,24 +246,88 @@ export function LineFretboardModal({
   bpm,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
+  const [past, setPast] = useState<LineNote[][]>([])
+  const [future, setFuture] = useState<LineNote[][]>([])
+
+  const recordThen = useCallback(
+    (apply: () => void) => {
+      setPast((current) => [...current, cloneLineNotes(notes)].slice(-MAX_HISTORY))
+      setFuture([])
+      apply()
+    },
+    [notes]
+  )
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return
+    const prev = past[past.length - 1]
+    setPast((current) => current.slice(0, -1))
+    setFuture((current) => [...current, cloneLineNotes(notes)])
+    onChangeNotes(prev)
+    onSelectedChange?.(
+      prev.length === 0 ? 0 : Math.min(selected ?? 0, prev.length - 1)
+    )
+  }, [notes, onChangeNotes, onSelectedChange, past, selected])
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return
+    const next = future[future.length - 1]
+    setFuture((current) => current.slice(0, -1))
+    setPast((current) => [...current, cloneLineNotes(notes)].slice(-MAX_HISTORY))
+    onChangeNotes(next)
+    onSelectedChange?.(
+      next.length === 0 ? 0 : Math.min(selected ?? 0, next.length - 1)
+    )
+  }, [future, notes, onChangeNotes, onSelectedChange, selected])
+
+  useEffect(() => {
+    if (open) return
+    setPast([])
+    setFuture([])
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      onClose()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      const action = undoRedoAction(event)
+      if (action === 'undo') {
+        event.preventDefault()
+        event.stopPropagation()
+        undo()
+        return
+      }
+      if (action === 'redo') {
+        event.preventDefault()
+        event.stopPropagation()
+        redo()
+      }
     }
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       document.body.style.overflow = overflow
     }
-  }, [onClose, open])
+  }, [onClose, open, redo, undo])
 
   if (!open) return null
+
+  const selectedIndex = Math.min(
+    Math.max(0, selected ?? 0),
+    Math.max(0, notes.length - 1)
+  )
+  const editSelected = Boolean(stack && notes[selectedIndex])
+  const applyRhythm = (rhythm: Pick<LineNote, 'value' | 'tuplet'>) => {
+    recordThen(() =>
+      onChangeNotes(setLineNoteRhythm(notes, selectedIndex, rhythm))
+    )
+  }
 
   return createPortal(
     <div
@@ -271,27 +352,68 @@ export function LineFretboardModal({
               Line fretboard
             </h2>
             <p className="mt-0.5 text-sm text-cosmos-400">
-              Pick a rhythm, then click frets. Stack adds a pitch to the
-              selected staff note.
+              Pick a rhythm, then click frets. Rest inserts silence. Select
+              a staff note to change its rhythm, or stack another pitch on it.
             </p>
             <div className="mt-2">
               <LineRhythmPicker
                 value={value}
                 tuplet={tuplet}
                 stack={stack}
-                onChange={onValueChange}
-                onTupletChange={onTupletChange}
-                onStackChange={onStackChange}
+                editSelected={editSelected}
+                onChange={(next) => {
+                  onValueChange(next)
+                  if (editSelected) applyRhythm({ value: next, tuplet })
+                }}
+                onTupletChange={(next) => {
+                  onTupletChange(next)
+                  if (editSelected) applyRhythm({ value, tuplet: next })
+                }}
+                onStackChange={(next) => {
+                  onStackChange(next)
+                  if (!next) return
+                  const note = notes[selectedIndex]
+                  if (!note) return
+                  onValueChange(lineNoteValue(note))
+                  onTupletChange(lineNoteTuplet(note))
+                }}
+                onRest={() => {
+                  const next = insertLineRest(notes, { value, tuplet }, selectedIndex)
+                  recordThen(() => {
+                    onChangeNotes(next)
+                    onSelectedChange?.(notes.length === 0 ? 0 : selectedIndex + 1)
+                  })
+                }}
               />
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg border border-cosmos-700 px-3 py-1.5 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+              disabled={past.length === 0}
+              onClick={undo}
+              title={`Undo ${UNDO_SHORTCUT.undo}`}
+              aria-label="Undo"
+              className="rounded-lg border border-cosmos-700 px-3 py-1.5 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Close
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={future.length === 0}
+              onClick={redo}
+              title={`Redo ${UNDO_SHORTCUT.redo}`}
+              aria-label="Redo"
+              className="rounded-lg border border-cosmos-700 px-3 py-1.5 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Redo
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-nebula-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-nebula-500"
+            >
+              Done
             </button>
           </div>
         </header>
@@ -305,7 +427,7 @@ export function LineFretboardModal({
               nextTuplet={tuplet}
               stack={stack}
               compact
-              onAdd={onAdd}
+              onAdd={(string, fret) => recordThen(() => onAdd(string, fret))}
             />
           </div>
 
@@ -328,7 +450,7 @@ export function LineFretboardModal({
                 </div>
                 <button
                   type="button"
-                  onClick={onClear}
+                  onClick={() => recordThen(onClear)}
                   className="rounded-lg border border-cosmos-700 px-3 py-2 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
                 >
                   Clear
@@ -340,8 +462,16 @@ export function LineFretboardModal({
                 bpm={bpm}
                 fixed
                 selected={selected}
-                onSelectedChange={onSelectedChange}
-                onChange={onChangeNotes}
+                onSelectedChange={(index) => {
+                  const note = notes[index]
+                  if (note) {
+                    onValueChange(lineNoteValue(note))
+                    onTupletChange(lineNoteTuplet(note))
+                  }
+                  onStackChange(true)
+                  onSelectedChange?.(index)
+                }}
+                onChange={(next) => recordThen(() => onChangeNotes(next))}
               />
             </div>
           ) : (
