@@ -33,6 +33,8 @@ interface Props {
   selectedVoicingId: string | null
   onSelectVoicing: (voicing: Voicing | null) => void
   onAdd: (voicing: Voicing) => void
+  /** When set, Add places the grip on this chord instead of a new step. */
+  stackTarget?: string
 }
 
 const DIFFICULTY_STYLES: Record<string, string> = {
@@ -50,6 +52,7 @@ export function VoicingPicker({
   selectedVoicingId,
   onSelectVoicing,
   onAdd,
+  stackTarget,
 }: Props) {
   const { group, inversions } = result
 
@@ -289,6 +292,7 @@ export function VoicingPicker({
           voicings={visibleVoicings}
           selectedVoicingId={selectedVoicingId}
           displaySelected={displaySelected}
+          stackTarget={stackTarget}
           onSelect={handleSelect}
           onAdd={(voicing, shown) => {
             onSelectVoicing(voicing)
@@ -308,6 +312,7 @@ export function VoicingPicker({
             voicings={visibleCrossed}
             selectedVoicingId={selectedVoicingId}
             displaySelected={displaySelected}
+            stackTarget={stackTarget}
             onSelect={handleSelect}
             onAdd={(voicing, shown) => {
               onSelectVoicing(voicing)
@@ -381,7 +386,7 @@ export function VoicingPicker({
               onClick={() => onAdd(displaySelected)}
               className="rounded-lg bg-nebula-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-nebula-500"
             >
-              Add to sequence
+              {stackTarget ? `Stack on ${stackTarget}` : 'Add to sequence'}
             </button>
           </div>
         </div>
@@ -431,12 +436,14 @@ function VoicingGrid({
   voicings,
   selectedVoicingId,
   displaySelected,
+  stackTarget,
   onSelect,
   onAdd,
 }: {
   voicings: Voicing[]
   selectedVoicingId: string | null
   displaySelected: Voicing | null
+  stackTarget?: string
   onSelect: (voicing: Voicing) => void
   onAdd: (voicing: Voicing, shown: Voicing) => void
 }) {
@@ -507,9 +514,14 @@ function VoicingGrid({
                   e.stopPropagation()
                   onAdd(voicing, shown)
                 }}
+                aria-label={
+                  stackTarget
+                    ? `Stack this grip on ${stackTarget}`
+                    : 'Add this grip to the sequence'
+                }
                 className="flex-1 rounded-md bg-nebula-600 py-1 text-[11px] font-semibold text-white transition hover:bg-nebula-500"
               >
-                + Add
+                {stackTarget ? '+ Stack' : '+ Add'}
               </button>
             </div>
           </div>

@@ -45,6 +45,7 @@ import {
   randomizeSlotShape,
   voicingForSlot,
   toggleSlotHighlight,
+  toggleSlotStackHighlight,
   adjustSlotFretExtend,
   readImportedSongs,
   saveState,
@@ -52,6 +53,7 @@ import {
   setBarHarmony,
   setBarName,
   slotFromVoicing,
+  stackFromVoicing,
   slotFromLineNotes,
   type SequenceSlot,
   type SlotLocation,
@@ -193,6 +195,18 @@ export function useSongs() {
       return placed
     },
     [activeSongId, updateSong]
+  )
+
+  const setSlotStack = useCallback(
+    (location: SlotLocation, voicing: Voicing | null) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        patchSlot(song, location, {
+          stack: voicing ? stackFromVoicing(voicing) : undefined,
+        })
+      )
+    },
+    [activeSong, updateSong]
   )
 
   const addLine = useCallback(
@@ -362,6 +376,16 @@ export function useSongs() {
       if (!activeSong) return
       updateSong(activeSong.id, (song) =>
         toggleSlotHighlight(song, location, note)
+      )
+    },
+    [activeSong, updateSong]
+  )
+
+  const toggleStackHighlight = useCallback(
+    (location: SlotLocation, note: { string: number; fret: number }) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        toggleSlotStackHighlight(song, location, note)
       )
     },
     [activeSong, updateSong]
@@ -659,6 +683,7 @@ export function useSongs() {
     firstEmpty: activeSong ? firstEmptyLocation(activeSong) : null,
     setActiveSongId,
     addVoicing,
+    setSlotStack,
     addLine,
     placeIncoming,
     removeSlot,
@@ -674,6 +699,7 @@ export function useSongs() {
     setSlotStrumPattern,
     setLineNotes,
     toggleHighlight,
+    toggleStackHighlight,
     extendFrets,
     shiftSlotOctave: shiftSlotOctaveBy,
     randomizeSlotShape: randomizeSlotShapeBy,

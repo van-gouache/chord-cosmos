@@ -27,6 +27,8 @@ interface Props {
   rootPc?: number
   /** When set, clicking an empty cell toggles an outline there. */
   onToggleNote?: (note: { string: number; fret: number }) => void
+  /** Chord this diagram belongs to, used in outline button names. */
+  outlineOf?: string
   /** Extra fret rows toward the nut. */
   extendLow?: number
   /** Extra fret rows toward the body. */
@@ -126,6 +128,7 @@ export function ChordDiagram({
   kind = 'chord',
   rootPc: rootPcOverride,
   onToggleNote,
+  outlineOf,
   extendLow,
   extendHigh,
   className,
@@ -501,7 +504,7 @@ export function ChordDiagram({
             data-highlight-note=""
             draggable={false}
             aria-pressed={isLine ? undefined : highlighted}
-            aria-label={`${isLine ? 'Add' : highlighted ? 'Remove' : 'Add'} ${isLine ? 'line' : tone.degree} outline on string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
+            aria-label={`${isLine ? 'Add' : highlighted ? 'Remove' : 'Add'} ${isLine ? 'line' : tone.degree} outline on ${outlineOf ? `${outlineOf}, ` : ''}string ${hit.stringIndex + 1}${hit.fret === 0 ? ', open' : `, fret ${hit.fret}`}`}
             className="pointer-events-auto absolute cursor-pointer touch-manipulation rounded-full border-0 bg-transparent p-0 hover:bg-white/10"
             style={{
               left: `${((hit.cx - hit.cellW / 2) / width) * 100}%`,

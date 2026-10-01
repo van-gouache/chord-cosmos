@@ -7,6 +7,7 @@ import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
 import { VoicingPicker } from './components/VoicingPicker'
 import { GripCatalogModal } from './components/GripCatalogModal'
+import type { PolychordStack } from './theory/polychord'
 import { useDragAutoScroll } from './components/dragAutoScroll'
 import { setMasterVolume, unlockAudio } from './audio/player'
 import { WorkshopConfig } from './components/WorkshopConfig'
@@ -17,11 +18,12 @@ import {
   DEFAULT_BPM,
   locationExists,
   nextChordForWorkshop,
+  slotAt,
   type SlotLocation,
 } from './state/songs'
 import { loadPrefs, updatePrefs } from './state/prefs'
 import { useSongs } from './state/useSongs'
-import { tryParseChord } from './theory/chords'
+import { displayChordSymbol, tryParseChord } from './theory/chords'
 import { isLineGroupId } from './theory/lineOutline'
 import type { ProgressionStep } from './theory/diatonic'
 import { generateAllTriads, generateTriadGroup, isTriadGroupId, TRIAD_GROUPS_BY_ID } from './theory/triads'
@@ -64,6 +66,13 @@ export default function App() {
     roman: string
     symbol: string
   } | null>(null)
+  const [pendingStack, setPendingStack] = useState<{
+    location: SlotLocation
+    lowerSymbol: string
+    /** Set for a suggested stack. Empty means any chord chosen in the workshop. */
+    upperSymbol: string | null
+    reason: string
+  } | null>(null)
   const [showSplash, setShowSplash] = useState(true)
   const rootRef = useRef<HTMLDivElement>(null)
   const usedBrowserFullscreen = useRef(false)
@@ -86,6 +95,21 @@ export default function App() {
     if (!pendingProgression) return
     if (input !== pendingProgression.symbol) setPendingProgression(null)
   }, [input, pendingProgression])
+
+  useEffect(() => {
+    if (!pendingStack) return
+    if (
+      !songs.activeSong ||
+      !locationExists(songs.activeSong, pendingStack.location)
+    ) {
+      setPendingStack(null)
+      return
+    }
+    if (pendingStack.upperSymbol === null) return
+    const current = tryParseChord(input).chord?.symbol
+    const pending = tryParseChord(pendingStack.upperSymbol).chord?.symbol
+    if (!current || !pending || current !== pending) setPendingStack(null)
+  }, [input, pendingStack, songs.activeSong])
 
   const toggleNotebook = useCallback(() => {
     setNotebookMode((open) => {
@@ -249,6 +273,19 @@ export default function App() {
   }
 
   const handleAdd = (voicing: Voicing) => {
+    if (
+      pendingStack &&
+      (pendingStack.upperSymbol === null ||
+        sameParsedSymbol(voicing.chordSymbol, pendingStack.upperSymbol))
+    ) {
+      songs.setSlotStack(pendingStack.location, voicing)
+      setSelectedSlot(pendingStack.location)
+      setPendingStack(null)
+      setPendingProgression(null)
+      setJustAdded(voicing.id)
+      window.setTimeout(() => setJustAdded(null), 1400)
+      return
+    }
     const placed = songs.addVoicing(voicing, selectedSlot, {
       roman: romanForPlacement(selectedSlot, voicing.chordSymbol),
     })
@@ -256,6 +293,52 @@ export default function App() {
     setPendingProgression(null)
     setJustAdded(voicing.id)
     window.setTimeout(() => setJustAdded(null), 1400)
+  }
+
+  const revealWorkshop = () => {
+    setNotebookMode(false)
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {})
+    }
+    usedBrowserFullscreen.current = false
+    setWorkshopOpen(true)
+    setPendingProgression(null)
+    window.setTimeout(() => {
+      document.getElementById('voicing-workshop')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    }, 50)
+  }
+
+  const handlePickStack = (location: SlotLocation, stack: PolychordStack) => {
+    revealWorkshop()
+    setSelectedSlot(location)
+    setInput(stack.symbol)
+    setWorkshopTab(stack.workshop)
+    setPendingStack({
+      location,
+      lowerSymbol: stack.lowerSymbol,
+      upperSymbol: stack.symbol,
+      reason: stack.reason,
+    })
+  }
+
+  const handlePickCustomStack = (location: SlotLocation) => {
+    if (!songs.activeSong) return
+    const slot = slotAt(songs.activeSong, location)
+    if (!slot) return
+    revealWorkshop()
+    setSelectedSlot(location)
+    if (workshopTab !== 'vsystem' && workshopTab !== 'triads') {
+      setWorkshopTab('vsystem')
+    }
+    setPendingStack({
+      location,
+      lowerSymbol: slot.chordSymbol,
+      upperSymbol: null,
+      reason: '',
+    })
   }
 
   const romanForPlacement = (
@@ -348,6 +431,7 @@ export default function App() {
             onSetSlotStrumPattern={songs.setSlotStrumPattern}
             onSetLineNotes={songs.setLineNotes}
             onToggleHighlight={songs.toggleHighlight}
+            onToggleStackHighlight={songs.toggleStackHighlight}
             onExtendFrets={songs.extendFrets}
             onShiftSlotOctave={songs.shiftSlotOctave}
             onRandomizeSlot={(location) => {
@@ -382,6 +466,10 @@ export default function App() {
             showCircleOfFifths={showCircleOfFifths}
             onPlayingLocationChange={setPlayingSlot}
             workshopChordSymbol={chord?.symbol ?? input}
+            stackSource={pendingStack?.location ?? null}
+            onPickStack={handlePickStack}
+            onPickCustomStack={handlePickCustomStack}
+            onClearStack={(location) => songs.setSlotStack(location, null)}
             notebookStyle={notebookStyle}
             toolbarCollapsed={toolbarCollapsed}
             onToggleToolbar={() => {
@@ -400,14 +488,21 @@ export default function App() {
 
         {!notebookMode &&
           (workshopOpen ? (
-            <aside className="mx-3 mb-3 flex max-h-[48vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-cosmos-700/70 bg-cosmos-900/80 lg:my-3 lg:mr-3 lg:ml-0 lg:max-h-full lg:w-[min(460px,38vw)]">
+            <aside
+              id="voicing-workshop"
+              className="mx-3 mb-3 flex max-h-[48vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-cosmos-700/70 bg-cosmos-900/80 lg:my-3 lg:mr-3 lg:ml-0 lg:max-h-full lg:w-[min(460px,38vw)]"
+            >
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-cosmos-700/70 px-4 py-2.5">
                 <div>
                   <p className="text-xs font-semibold tracking-[0.14em] text-cosmos-400 uppercase">
                     Voicing workshop
                   </p>
-                  <p className="mt-0.5 text-[11px] text-cosmos-500">
-                    {pendingProgression && workshopTab === 'vsystem'
+                  <p className="mt-0.5 text-[11px] leading-snug text-cosmos-500">
+                    {pendingStack
+                      ? pendingStack.upperSymbol
+                        ? `Upper structure over ${displayChordSymbol(pendingStack.lowerSymbol)}. Pick a grip — Add to sequence puts it in that same step.`
+                        : `Upper structure over ${displayChordSymbol(pendingStack.lowerSymbol)}. Choose any chord, then add the grip to that same step.`
+                      : pendingProgression && workshopTab === 'vsystem'
                       ? `Pick a V-System grip for ${pendingProgression.roman} · ${pendingProgression.symbol}`
                       : workshopTab === 'config'
                       ? 'Toggle helpers for the workshop and sequence'
@@ -419,6 +514,11 @@ export default function App() {
                           : `${groups.filter((g) => !g.unreachable).length} of 14 playable for ${chord.symbol}`
                         : 'Type a chord to add shapes'}
                   </p>
+                  {pendingStack?.reason ? (
+                    <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-nebula-200/90">
+                      {pendingStack.reason}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {workshopTab === 'vsystem' && (
@@ -626,6 +726,11 @@ export default function App() {
                       selectedVoicingId={activeVoicing?.id ?? null}
                       onSelectVoicing={setSelectedVoicing}
                       onAdd={handleAdd}
+                      stackTarget={
+                        pendingStack
+                          ? displayChordSymbol(pendingStack.lowerSymbol)
+                          : undefined
+                      }
                     />
                   )}
                 {chord &&
@@ -640,6 +745,11 @@ export default function App() {
                       selectedVoicingId={activeVoicing?.id ?? null}
                       onSelectVoicing={setSelectedVoicing}
                       onAdd={handleAdd}
+                      stackTarget={
+                        pendingStack
+                          ? displayChordSymbol(pendingStack.lowerSymbol)
+                          : undefined
+                      }
                     />
                   )}
                 {chord &&
@@ -690,3 +800,9 @@ export default function App() {
 }
 
 type WorkshopTab = 'vsystem' | 'triads' | 'build' | 'config'
+
+function sameParsedSymbol(a: string, b: string): boolean {
+  const left = tryParseChord(a).chord?.symbol
+  const right = tryParseChord(b).chord?.symbol
+  return Boolean(left && right && left === right)
+}

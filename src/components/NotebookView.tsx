@@ -195,6 +195,17 @@ function NotebookEntry({
     ? selectedKeys.has(locationKey(location))
     : selected !== null && locationsEqual(selected, location)
   const hydrated = hydrateSlot(slot)
+  const upper =
+    slot.stack && !isLineGroupId(slot.groupId)
+      ? hydrateSlot({
+          id: `${slot.id}-stack`,
+          chordSymbol: slot.stack.chordSymbol,
+          groupId: slot.stack.groupId,
+          inversion: slot.stack.inversion,
+          tab: slot.stack.tab,
+          note: '',
+        })
+      : null
   const romanLabel = isLineGroupId(slot.groupId)
     ? undefined
     : romanForChord(slot.chordSymbol, keyRoot, mode ?? DEFAULT_MODE)
@@ -220,9 +231,22 @@ function NotebookEntry({
         <span className="notebook-symbol">
           {isLineGroupId(slot.groupId)
             ? 'Line'
-            : displayChordSymbol(slot.chordSymbol)}
+            : slot.stack
+              ? `${displayChordSymbol(slot.stack.chordSymbol)} / ${displayChordSymbol(slot.chordSymbol)}`
+              : displayChordSymbol(slot.chordSymbol)}
         </span>
       </div>
+      {upper?.fingering && upper.shape ? (
+        <ChordDiagram
+          fingering={upper.fingering}
+          shape={upper.shape}
+          size="nb"
+          showDegrees
+          kind="chord"
+          highlightedNotes={slot.stack?.highlightedNotes}
+          className="notebook-box-diagram"
+        />
+      ) : null}
       {hydrated.fingering && hydrated.shape && (
         <ChordDiagram
           fingering={hydrated.fingering}

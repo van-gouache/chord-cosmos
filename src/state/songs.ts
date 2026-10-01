@@ -112,6 +112,18 @@ export interface SequenceSlot {
   extendLow?: number
   /** Extra fret rows toward the body, beyond the automatic box. */
   extendHigh?: number
+  /** Upper chord voiced in this same step, on top of `chordSymbol`. */
+  stack?: SlotStack
+}
+
+/** A second grip stored on the same sequencer step as the chord under it. */
+export interface SlotStack {
+  chordSymbol: string
+  groupId: string
+  inversion: number
+  tab: string
+  /** Extra outline markers on the upper diagram. */
+  highlightedNotes?: HighlightedNote[]
 }
 
 export interface HighlightedNote {
@@ -336,6 +348,15 @@ export function slotFromVoicing(
   }
 }
 
+export function stackFromVoicing(voicing: Voicing): SlotStack {
+  return {
+    chordSymbol: voicing.chordSymbol,
+    groupId: voicing.groupId,
+    inversion: voicing.inversion,
+    tab: tabLabel(voicing.fingering),
+  }
+}
+
 export function slotFromLineNotes(
   notes: readonly LineNote[]
 ): SequenceSlot | null {
@@ -402,6 +423,14 @@ export function cloneSlot(slot: SequenceSlot): SequenceSlot {
     ...slot,
     id: newId(),
     highlightedNotes: slot.highlightedNotes?.map((note) => ({ ...note })),
+    stack: slot.stack
+      ? {
+          ...slot.stack,
+          highlightedNotes: slot.stack.highlightedNotes?.map((note) => ({
+            ...note,
+          })),
+        }
+      : undefined,
     lineNotes: slot.lineNotes?.map((note) =>
       isLineRest(note)
         ? { ...note }
@@ -980,6 +1009,7 @@ export function patchSlot(
   if ('extendHigh' in patch && patch.extendHigh === undefined) {
     delete next.extendHigh
   }
+  if ('stack' in patch && patch.stack === undefined) delete next.stack
   return placeSlot(song, location, next)
 }
 
@@ -1035,12 +1065,42 @@ export function toggleSlotHighlight(
   })
 }
 
+/** Toggles an outline on the upper grip of a stacked step. */
+export function toggleSlotStackHighlight(
+  song: Song,
+  location: SlotLocation,
+  note: HighlightedNote
+): Song {
+  const section = song.sections.find((item) => item.id === location.sectionId)
+  const bar = section?.bars.find((item) => item.id === location.barId)
+  const slot = bar?.slots[location.slotIndex]
+  if (!slot?.stack || isLineGroupId(slot.groupId)) return song
+  return patchSlot(song, location, {
+    stack: {
+      ...slot.stack,
+      highlightedNotes: toggleHighlightedNote(slot.stack.highlightedNotes, note),
+    },
+  })
+}
+
 export function slotMidiNotes(
   slot: SequenceSlot,
   fingering: Fingering | null
 ): number[] | null {
   if (isLineGroupId(slot.groupId)) return null
-  return fingering?.midiNotes ?? null
+  const notes = [...(fingering?.midiNotes ?? [])]
+  if (slot.stack) {
+    const upper = hydrateSlot({
+      id: `${slot.id}-stack`,
+      chordSymbol: slot.stack.chordSymbol,
+      groupId: slot.stack.groupId,
+      inversion: slot.stack.inversion,
+      tab: slot.stack.tab,
+      note: '',
+    }).fingering
+    if (upper) notes.push(...upper.midiNotes)
+  }
+  return notes.length > 0 ? notes : null
 }
 
 export function locationsEqual(a: SlotLocation, b: SlotLocation): boolean {
@@ -1400,6 +1460,24 @@ function readSlot(value: unknown): SequenceSlot | null {
     extendLow: readExtraCount(s.extendLow),
     extendHigh: readExtraCount(s.extendHigh),
     roman: readRoman(s.roman),
+    stack: readStack(s.stack),
+  }
+}
+
+function readStack(value: unknown): SlotStack | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const stack = value as Partial<SlotStack>
+  if (typeof stack.chordSymbol !== 'string' || typeof stack.tab !== 'string') {
+    return undefined
+  }
+  if (typeof stack.groupId !== 'string') return undefined
+  const highlightedNotes = readHighlightedNotes(stack.highlightedNotes)
+  return {
+    chordSymbol: stack.chordSymbol,
+    groupId: stack.groupId,
+    inversion: typeof stack.inversion === 'number' ? stack.inversion : 0,
+    tab: stack.tab,
+    ...(highlightedNotes ? { highlightedNotes } : {}),
   }
 }
 
@@ -1682,7 +1760,11 @@ export function exportSong(song: Song): string {
     if (section.note) lines.push(`  ${section.note}`)
     section.bars.forEach((bar, barIndex) => {
       const cells = bar.slots.map((slot) =>
-        slot ? `${displayChordSymbol(slot.chordSymbol)} ${slot.tab}` : '—'
+        slot
+          ? `${displayChordSymbol(slot.chordSymbol)}${
+              slot.stack ? ` + ${displayChordSymbol(slot.stack.chordSymbol)}` : ''
+            } ${slot.tab}`
+          : '—'
       )
       const groupName = bar.name?.trim()
       lines.push(

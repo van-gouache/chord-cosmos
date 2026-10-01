@@ -73,6 +73,8 @@ import { LineNotation } from './LineNotation'
 import { diagramFretWindow } from './fretWindow'
 import { SongManager } from './SongManager'
 import { NotebookStyleSwitch, NotebookView } from './NotebookView'
+import { PolychordModal } from './PolychordModal'
+import type { PolychordStack } from '../theory/polychord'
 import type { NotebookStyle } from '../state/notebook'
 
 const DRAG_MIME = 'application/x-chord-slot'
@@ -108,6 +110,10 @@ interface Props {
   onSetSlotStrumPattern: (location: SlotLocation, pattern: string | undefined) => void
   onSetLineNotes: (location: SlotLocation, notes: SequenceSlot['lineNotes']) => void
   onToggleHighlight: (
+    location: SlotLocation,
+    note: { string: number; fret: number }
+  ) => void
+  onToggleStackHighlight: (
     location: SlotLocation,
     note: { string: number; fret: number }
   ) => void
@@ -167,6 +173,10 @@ interface Props {
   onToggleNotebook?: () => void
   onNotebookStyleChange?: (style: NotebookStyle) => void
   workshopChordSymbol?: string
+  stackSource?: SlotLocation | null
+  onPickStack: (location: SlotLocation, stack: PolychordStack) => void
+  onPickCustomStack: (location: SlotLocation) => void
+  onClearStack: (location: SlotLocation) => void
 }
 
 export function SequencePanel({
@@ -192,6 +202,7 @@ export function SequencePanel({
   onSetSlotStrumPattern,
   onSetLineNotes,
   onToggleHighlight,
+  onToggleStackHighlight,
   onExtendFrets,
   onShiftSlotOctave,
   onRandomizeSlot,
@@ -230,6 +241,10 @@ export function SequencePanel({
   onToggleNotebook,
   onNotebookStyleChange,
   workshopChordSymbol,
+  stackSource = null,
+  onPickStack,
+  onPickCustomStack,
+  onClearStack,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
@@ -247,6 +262,7 @@ export function SequencePanel({
   } | null>(null)
   const [copied, setCopied] = useState(false)
   const [managerOpen, setManagerOpen] = useState(false)
+  const [stackLocation, setStackLocation] = useState<SlotLocation | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const playingCellRef = useRef<HTMLElement | null>(null)
@@ -266,6 +282,20 @@ export function SequencePanel({
     () => (song ? nextFilledChordMap(song) : new Map<string, ParsedChord>()),
     [song]
   )
+  const stackChord = useMemo(() => {
+    if (!stackLocation || !song || !locationExists(song, stackLocation)) return null
+    const bar = barAt(song, stackLocation.barId)
+    const slot = bar?.slots[stackLocation.slotIndex]
+    if (!slot || isLineGroupId(slot.groupId)) return null
+    const chord = tryParseChord(slot.chordSymbol).chord
+    if (!chord) return null
+    return { chord, keyRoot: bar?.keyRoot, mode: bar?.mode }
+  }, [song, stackLocation])
+
+  useEffect(() => {
+    if (!stackLocation) return
+    if (!stackChord) setStackLocation(null)
+  }, [stackChord, stackLocation])
 
   const hydratedById = useMemo(() => {
     const map = new Map<
@@ -1254,11 +1284,23 @@ export function SequencePanel({
                           onToggleHighlight={(note) =>
                             onToggleHighlight(location, note)
                           }
+                          onToggleStackHighlight={(note) =>
+                            onToggleStackHighlight(location, note)
+                          }
                           onExtendFrets={(edge, delta) =>
                             onExtendFrets(location, edge, delta)
                           }
                           onOctaveShift={(delta) => onShiftSlotOctave(location, delta)}
                           onRandomize={() => onRandomizeSlot(location)}
+                          onStack={() => {
+                            onSelectSlot(location)
+                            setStackLocation(location)
+                          }}
+                          stackActive={
+                            stackSource !== null &&
+                            locationsEqual(stackSource, location)
+                          }
+                          onClearStack={() => onClearStack(location)}
                           onDragStart={() => {
                             setDragFrom(location)
                             const key = locationKey(location)
@@ -1371,6 +1413,24 @@ export function SequencePanel({
           </>
         )}
       </div>
+      {stackChord ? (
+        <PolychordModal
+          chord={stackChord.chord}
+          keyRoot={stackChord.keyRoot}
+          mode={stackChord.mode}
+          onClose={() => setStackLocation(null)}
+          onSelect={(stack) => {
+            const location = stackLocation
+            setStackLocation(null)
+            if (location) onPickStack(location, stack)
+          }}
+          onCustom={() => {
+            const location = stackLocation
+            setStackLocation(null)
+            if (location) onPickCustomStack(location)
+          }}
+        />
+      ) : null}
     </section>
   )
 }
@@ -1406,9 +1466,13 @@ interface SlotCellProps {
   bpm: number
   onSetLineNotes: (notes: SequenceSlot['lineNotes']) => void
   onToggleHighlight: (note: { string: number; fret: number }) => void
+  onToggleStackHighlight: (note: { string: number; fret: number }) => void
   onExtendFrets: (edge: 'low' | 'high', delta: number) => void
   onOctaveShift: (deltaFrets: number) => void
   onRandomize: () => void
+  onStack: () => void
+  stackActive?: boolean
+  onClearStack: () => void
   onDragStart: () => void
   onDragEnd: () => void
   onDragOver: () => void
@@ -1449,9 +1513,13 @@ function SlotCell({
   bpm,
   onSetLineNotes,
   onToggleHighlight,
+  onToggleStackHighlight,
   onExtendFrets,
   onOctaveShift,
   onRandomize,
+  onStack,
+  stackActive = false,
+  onClearStack,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -1504,6 +1572,18 @@ function SlotCell({
       ? 'Line'
       : displayChordSymbol(slot.chordSymbol)
     : ''
+  const stackName = slot?.stack ? displayChordSymbol(slot.stack.chordSymbol) : ''
+  const stacked =
+    slot?.stack && !isLine
+      ? hydrateSlot({
+          id: `${slot.id}-stack`,
+          chordSymbol: slot.stack.chordSymbol,
+          groupId: slot.stack.groupId,
+          inversion: slot.stack.inversion,
+          tab: slot.stack.tab,
+          note: '',
+        })
+      : null
   const chordParts = slot && !isLine ? splitChordDisplay(slot.chordSymbol) : null
   const currentChord = slot && !isLine
     ? tryParseChord(slot.chordSymbol).chord
@@ -1622,7 +1702,11 @@ function SlotCell({
             />
           )}
           <div
-            className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 flex-col items-center justify-center text-cosmos-200`}
+            className={`flex ${presenting ? '' : diagramAreaMinHeight(steps)} flex-1 flex-col items-center text-cosmos-200 ${
+              stacked?.fingering && !presenting
+                ? 'justify-start pt-12'
+                : 'justify-center'
+            }`}
           >
             {!presenting && fretBox && (
               <FretExtendButtons
@@ -1633,6 +1717,37 @@ function SlotCell({
                 onAdjust={(delta) => onExtendFrets('low', delta)}
               />
             )}
+            {stacked?.fingering && stacked.shape && slot?.stack ? (
+              <div
+                className="mb-1 w-full"
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <p className="mb-0.5 truncate px-1 text-center text-[10px] font-semibold tracking-wide text-gold-400 uppercase">
+                  {stackName}
+                </p>
+                <div className="pointer-events-none flex w-full items-center justify-center">
+                  <ChordDiagram
+                    fingering={stacked.fingering}
+                    shape={stacked.shape}
+                    size="sm"
+                    showDegrees
+                    kind="chord"
+                    highlightedNotes={slot.stack.highlightedNotes}
+                    onToggleNote={presenting ? undefined : onToggleStackHighlight}
+                    outlineOf={stackName}
+                    className={
+                      presenting
+                        ? 'h-auto w-full'
+                        : 'mx-auto h-auto w-full max-w-[6.75rem]'
+                    }
+                  />
+                </div>
+                <p className="mt-0.5 text-center text-[10px] tracking-[0.14em] text-cosmos-500 uppercase">
+                  on {chordName}
+                </p>
+              </div>
+            ) : null}
             <div className="pointer-events-none flex w-full items-center justify-center">
               {fingering && shape ? (
                 <ChordDiagram
@@ -1698,6 +1813,12 @@ function SlotCell({
           {presenting ? (
             <div className="mt-2 text-center">
               <p className="text-xl leading-tight font-bold text-white [overflow-wrap:anywhere]">
+                {stackName ? (
+                  <>
+                    <span className="text-gold-300">{stackName}</span>
+                    <span className="text-cosmos-500"> / </span>
+                  </>
+                ) : null}
                 <ChordNameText parts={chordParts} fallback={chordName} />
               </p>
               <p className="mt-0.5 truncate text-sm text-nebula-400">
@@ -1718,6 +1839,12 @@ function SlotCell({
               <div className="mt-2 flex items-start justify-between gap-2">
                 <div className="pointer-events-none min-w-min">
                   <p className="text-sm leading-tight font-bold whitespace-nowrap text-white">
+                    {stackName ? (
+                      <>
+                        <span className="text-gold-300">{stackName}</span>
+                        <span className="font-medium text-cosmos-500"> / </span>
+                      </>
+                    ) : null}
                     <ChordNameText
                       parts={chordParts}
                       fallback={chordName}
@@ -1725,7 +1852,9 @@ function SlotCell({
                     />
                   </p>
                   <p className="mt-0.5 truncate text-xs text-nebula-300">
-                    {slotVoicingLabel(slot)}
+                    {stackName
+                      ? `${slot.stack?.groupId} over ${slotVoicingLabel(slot)}`
+                      : slotVoicingLabel(slot)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center">
@@ -1739,7 +1868,7 @@ function SlotCell({
                       onDragEnter={allowDrop}
                       onDragOver={allowDrop}
                       onDrop={handleDrop}
-                      aria-label={`Hear ${chordName}`}
+                      aria-label={`Hear ${stackName ? `${stackName} over ` : ''}${chordName}`}
                       className={slotIconClass}
                     >
                       ▶
@@ -1792,6 +1921,54 @@ function SlotCell({
                   </button>
                 </div>
               </div>
+              {!presenting && !isLine && currentChord && (
+                <div className="mt-1.5 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onStack()
+                    }}
+                    onDragEnter={allowDrop}
+                    onDragOver={allowDrop}
+                    onDrop={handleDrop}
+                    aria-label={
+                      stackName
+                        ? `Change the chord stacked on ${chordName}`
+                        : `Stack a chord on ${chordName}`
+                    }
+                    title={
+                      stackName
+                        ? `Change the chord stacked on ${chordName}`
+                        : 'Find a chord that stacks on this one'
+                    }
+                    className={`min-w-0 flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                      stackActive
+                        ? 'border-nebula-500 bg-nebula-500/15 text-white'
+                        : 'border-cosmos-700 text-cosmos-200 hover:border-nebula-500 hover:text-white'
+                    }`}
+                  >
+                    {stackName ? 'Change stack' : 'Stack'}
+                  </button>
+                  {stackName ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onClearStack()
+                      }}
+                      onDragEnter={allowDrop}
+                      onDragOver={allowDrop}
+                      onDrop={handleDrop}
+                      aria-label={`Remove ${stackName} from ${chordName}`}
+                      title={`Remove ${stackName} and keep ${chordName}`}
+                      className="shrink-0 rounded-md border border-cosmos-700 px-2 py-1 text-[11px] font-medium text-cosmos-300 transition hover:border-red-400 hover:text-red-400"
+                    >
+                      Remove stack
+                    </button>
+                  ) : null}
+                </div>
+              )}
               {!isLine && (
                 <SlotPlayControls
                   slot={slot}

@@ -45,6 +45,7 @@ import {
   placeSlot,
   toggleHighlightedNote,
   toggleSlotHighlight,
+  toggleSlotStackHighlight,
   adjustSlotFretExtend,
   shiftSlotOctave,
   randomizeSlotShape,
@@ -64,7 +65,7 @@ import {
   type Song,
 } from './songs'
 import { parseChord } from '../theory/chords'
-import { tabLabel } from '../theory/fretboard'
+import { tabLabel, type Fingering } from '../theory/fretboard'
 import { generateTriadGroup, TRIAD_GROUPS_BY_ID } from '../theory/triads'
 import { V_GROUPS_BY_ID } from '../theory/vsystem'
 import { generateGroup } from '../theory/voicings'
@@ -145,6 +146,83 @@ describe('song grid helpers', () => {
         })
       )?.roman
     ).toBe('II-7')
+  })
+
+  it('keeps an upper grip in the same slot and plays both', () => {
+    const song = createSong('Demo')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const placed = placeSlot(
+      song,
+      location,
+      slot({ id: 'lower', chordSymbol: 'E-7', tab: 'x-7-9-7-8-x' })
+    )
+    const stacked = patchSlot(placed, location, {
+      stack: {
+        chordSymbol: 'CΔ9',
+        groupId: 'V-2',
+        inversion: 0,
+        tab: 'x-3-2-4-3-x',
+      },
+    })
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(stacked)))
+    expect(roundTrip?.sections[0].bars[0].slots[0]?.chordSymbol).toBe('E-7')
+    expect(roundTrip?.sections[0].bars[0].slots[0]?.stack).toEqual({
+      chordSymbol: 'CΔ9',
+      groupId: 'V-2',
+      inversion: 0,
+      tab: 'x-3-2-4-3-x',
+    })
+    const copy = cloneSlot(stacked.sections[0].bars[0].slots[0]!)
+    expect(copy.id).not.toBe('lower')
+    expect(copy.stack).toEqual(stacked.sections[0].bars[0].slots[0]?.stack)
+    const cleared = patchSlot(stacked, location, { stack: undefined })
+    expect(cleared.sections[0].bars[0].slots[0]?.stack).toBeUndefined()
+    const notes = slotMidiNotes(stacked.sections[0].bars[0].slots[0]!, {
+      midiNotes: [40, 47, 52, 55],
+    } as Fingering)
+    expect(notes).toEqual(expect.arrayContaining([40, 47, 52, 55]))
+    expect(notes!.length).toBeGreaterThan(4)
+  })
+
+  it('outlines notes on the upper grip without changing the lower chord', () => {
+    const song = createSong('Demo')
+    const location = {
+      sectionId: song.sections[0].id,
+      barId: song.sections[0].bars[0].id,
+      slotIndex: 0,
+    }
+    const stacked = patchSlot(
+      placeSlot(song, location, slot({ id: 'lower', chordSymbol: 'E-7' })),
+      location,
+      {
+        stack: {
+          chordSymbol: 'CΔ9',
+          groupId: 'V-2',
+          inversion: 0,
+          tab: 'x-3-2-4-3-x',
+        },
+        highlightedNotes: [{ string: 1, fret: 5 }],
+      }
+    )
+    const mark = { string: 2, fret: 5 }
+    const outlined = toggleSlotStackHighlight(stacked, location, mark)
+    const saved = outlined.sections[0].bars[0].slots[0]
+    expect(saved?.highlightedNotes).toEqual([{ string: 1, fret: 5 }])
+    expect(saved?.stack?.highlightedNotes).toEqual([mark])
+    const roundTrip = normalizeSong(JSON.parse(JSON.stringify(outlined)))
+    expect(roundTrip?.sections[0].bars[0].slots[0]?.stack?.highlightedNotes).toEqual([
+      mark,
+    ])
+    const copy = cloneSlot(saved!)
+    expect(copy.stack?.highlightedNotes).toEqual([mark])
+    expect(copy.stack?.highlightedNotes).not.toBe(saved?.stack?.highlightedNotes)
+    const cleared = toggleSlotStackHighlight(outlined, location, mark)
+    expect(cleared.sections[0].bars[0].slots[0]?.stack?.highlightedNotes).toBeUndefined()
+    expect(toggleSlotStackHighlight(song, location, mark)).toBe(song)
   })
 
   it('rebuilds a slot from a dragged voicing payload', () => {
