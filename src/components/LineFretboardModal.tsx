@@ -8,6 +8,7 @@ import { MAX_HISTORY } from '../state/history'
 import {
   emptyLineFingering,
   flattenLinePitches,
+  isLineRest,
   lineShape,
   insertLineRest,
   setLineNoteRhythm,
@@ -29,7 +30,7 @@ const ALL_FRETS = Array.from({ length: MAX_PLAYABLE_FRET }, (_, i) => i + 1)
 
 function cloneLineNotes(notes: readonly LineNote[]): LineNote[] {
   return notes.map((note) =>
-    'rest' in note && note.rest
+    isLineRest(note)
       ? { ...note }
       : { ...note, stack: note.stack?.map((pitch) => ({ ...pitch })) }
   )
