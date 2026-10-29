@@ -42,6 +42,11 @@ import {
 } from '../theory/triads'
 import { buildShape, V_GROUPS_BY_ID, type VoicingShape } from '../theory/vsystem'
 import {
+  generateProgression,
+  type GenerateProgressionChoice,
+} from '../theory/generateProgression'
+import { voiceProgressionGrips } from '../theory/progressionGrips'
+import {
   generateGroup,
   voicingMatchingTab,
   type GroupResult,
@@ -1381,6 +1386,35 @@ function mapBar(song: Song, barId: string, change: (bar: Bar) => Bar): Song {
       bars: section.bars.map((bar) => (bar.id === barId ? change(bar) : bar)),
     })),
   }
+}
+
+/** Replaces one group's chords with a generated progression and sets its key. */
+export function applyGeneratedProgression(
+  song: Song,
+  barId: string,
+  choice: GenerateProgressionChoice,
+): Song {
+  if (!findBar(song, barId)) return song
+  const generated = generateProgression(choice)
+  if (generated.steps.length === 0) return song
+
+  const grips = voiceProgressionGrips(
+    generated.steps.map((step) => tryParseChord(step.symbol).chord),
+    choice.exoticism ?? 0,
+    choice.random ?? Math.random,
+  )
+  const slots = generated.steps.map((step, index) => {
+    const voicing = grips[index]
+    if (!voicing) return null
+    return slotFromVoicing(voicing, '', { roman: step.roman })
+  })
+
+  return mapBar(song, barId, (bar) => ({
+    ...bar,
+    keyRoot: generated.keyRoot,
+    mode: generated.mode,
+    slots,
+  }))
 }
 
 export function setBarHarmony(

@@ -43,6 +43,7 @@ import {
   removeStepAt,
   patchSlot,
   placeSlot,
+  applyGeneratedProgression,
   toggleHighlightedNote,
   toggleSlotHighlight,
   toggleSlotStackHighlight,
@@ -1441,6 +1442,39 @@ describe('persistence and migration', () => {
     expect(loaded.songs[0].sections[0].bars[0].slots[0]?.playback).toBe('arp-up')
     expect(loaded.songs[0].sections[0].bars[0].slots[0]?.strumPattern).toBe(
       'dxdx'
+    )
+  })
+})
+
+describe('applyGeneratedProgression', () => {
+  it('replaces a group with voiced chords in the chosen key', () => {
+    const song = createSong('Generated')
+    const barId = song.sections[0].bars[0].id
+    const next = applyGeneratedProgression(song, barId, {
+      count: 4,
+      keyRoot: 'C',
+      mode: 'ionian',
+      spiciness: 0,
+      random: () => 0,
+    })
+    const bar = next.sections[0].bars[0]
+    expect(bar.keyRoot).toBe('C')
+    expect(bar.mode).toBe('ionian')
+    expect(bar.slots.map((slot) => slot?.chordSymbol)).toEqual([
+      'CΔ7',
+      'A-7',
+      'D-7',
+      'G7',
+    ])
+    expect(bar.slots.map((slot) => slot?.roman)).toEqual([
+      'IΔ7',
+      'VI-7',
+      'II-7',
+      'V7',
+    ])
+    expect(bar.slots.every((slot) => slot?.groupId === 'V-2')).toBe(true)
+    expect(song.sections[0].bars[0].slots.every((slot) => slot === null)).toBe(
+      true,
     )
   })
 })

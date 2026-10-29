@@ -202,6 +202,13 @@ describe('chord symbol parsing', () => {
     expect(degrees('C7b9#5')).toEqual(['R', '♭9', '3', '♯5'])
   })
 
+  it('keeps three-note qualities off the V-System chips', () => {
+    const triadSuffixes = new Set(TRIAD_QUALITY_CHIPS.map((chip) => chip.suffix))
+    for (const chip of ALL_QUALITY_CHIPS) {
+      expect(triadSuffixes.has(chip.suffix), chip.label).toBe(false)
+    }
+  })
+
   it('parses every quality chip to four distinct tones', () => {
     const suffixes = ALL_QUALITY_CHIPS.map((c) => c.suffix)
     expect(new Set(suffixes).size).toBe(suffixes.length)

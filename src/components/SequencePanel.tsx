@@ -53,7 +53,9 @@ import { incomingVoicingFrom, isVoicingDrag } from './voicingDrag'
 import { ProgressionBuilder } from './ProgressionBuilder'
 import { OctaveSelect } from './OctaveShiftButtons'
 import type { KeyCenter, ModeId, ProgressionStep } from '../theory/diatonic'
+import type { GenerateProgressionChoice } from '../theory/generateProgression'
 import { DEFAULT_MODE, romanBadge, romanForChord } from '../theory/diatonic'
+import { suggestNextChords, type NextChordPlan } from '../theory/nextChord'
 import type { Fingering } from '../theory/fretboard'
 import type { VoicingShape } from '../theory/vsystem'
 import { inversionOrdinal } from '../theory/voicings'
@@ -98,7 +100,10 @@ interface Props {
   onRename: (id: string, name: string) => void
   onRemoveSlot: (location: SlotLocation) => void
   onRemoveSlots: (locations: SlotLocation[]) => void
-  onInsertSlot: (location: SlotLocation, side: 'before' | 'after') => void
+  onInsertSlot: (
+    location: SlotLocation,
+    side: 'before' | 'after',
+  ) => SlotLocation | null
   onRemoveStep: (location: SlotLocation) => void
   onMoveSlot: (from: SlotLocation, to: SlotLocation) => void
   onMoveSlots: (froms: SlotLocation[], to: SlotLocation) => SlotLocation[]
@@ -145,6 +150,7 @@ interface Props {
     barId: string,
     harmony: { keyRoot: KeyCenter | null; mode?: ModeId }
   ) => void
+  onGenerateProgression: (barId: string, choice: GenerateProgressionChoice) => void
   onPickProgressionStep: (
     location: SlotLocation | null,
     step: ProgressionStep
@@ -165,18 +171,63 @@ interface Props {
   showForwardTargets?: boolean
   showLickOutline?: boolean
   showCircleOfFifths?: boolean
+  matrixCollapsed?: boolean
+  onToggleMatrix?: () => void
   onPlayingLocationChange?: (location: SlotLocation | null) => void
   notebookMode?: boolean
   notebookStyle?: NotebookStyle
   toolbarCollapsed?: boolean
   onToggleToolbar?: () => void
   onToggleNotebook?: () => void
+  onOpenManual?: () => void
   onNotebookStyleChange?: (style: NotebookStyle) => void
   workshopChordSymbol?: string
   stackSource?: SlotLocation | null
   onPickStack: (location: SlotLocation, stack: PolychordStack) => void
   onPickCustomStack: (location: SlotLocation) => void
   onClearStack: (location: SlotLocation) => void
+}
+
+const KOFI_URL = 'https://ko-fi.com/ericwidmann'
+
+function CoffeeLink() {
+  return (
+    <a
+      href={KOFI_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Buy me a coffee on Ko-fi"
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-gold-400/45 bg-gold-400/10 px-3 text-sm font-semibold text-gold-400 transition hover:border-gold-400 hover:bg-gold-400/20 hover:text-white"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden
+        className="h-3.5 w-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 8h9v5a3.5 3.5 0 0 1-3.5 3.5h-2A3.5 3.5 0 0 1 6 13V8Z" />
+        <path d="M15 9.5h1.6a2 2 0 0 1 0 4H15" />
+        <path d="M9 4.5c.5 1 .5 1.6 0 2.6M12 4.5c.5 1 .5 1.6 0 2.6" />
+      </svg>
+      Buy me a coffee
+    </a>
+  )
+}
+
+function ManualButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 shrink-0 items-center rounded-lg border border-cosmos-700 px-3 text-sm text-cosmos-300 transition hover:border-nebula-500 hover:text-white"
+    >
+      Manual
+    </button>
+  )
 }
 
 export function SequencePanel({
@@ -221,6 +272,7 @@ export function SequencePanel({
   onSetBpm,
   onSetGroupSteps,
   onSetBarHarmony,
+  onGenerateProgression,
   onPickProgressionStep,
   pendingProgression = null,
   onClear,
@@ -233,12 +285,15 @@ export function SequencePanel({
   showForwardTargets = true,
   showLickOutline = false,
   showCircleOfFifths = false,
+  matrixCollapsed = false,
+  onToggleMatrix,
   onPlayingLocationChange,
   notebookMode = false,
   notebookStyle = 'cream',
   toolbarCollapsed = false,
   onToggleToolbar,
   onToggleNotebook,
+  onOpenManual,
   onNotebookStyleChange,
   workshopChordSymbol,
   stackSource = null,
@@ -631,6 +686,8 @@ export function SequencePanel({
                   onChange={onNotebookStyleChange}
                 />
               )}
+              {onOpenManual && <ManualButton onClick={onOpenManual} />}
+              <CoffeeLink />
               <button
                 type="button"
                 aria-pressed
@@ -663,6 +720,8 @@ export function SequencePanel({
               <span className="font-semibold text-white">{song.name}</span>
               {` · ${slotCount} chord${slotCount === 1 ? '' : 's'}`}
             </p>
+            {onOpenManual && <ManualButton onClick={onOpenManual} />}
+            <CoffeeLink />
             <button
               type="button"
               onClick={isPlaying ? stop : play}
@@ -683,6 +742,8 @@ export function SequencePanel({
                     aria-label="Sequence name"
                     className="min-w-0 flex-1 bg-transparent px-0 py-0.5 text-left text-2xl font-bold tracking-tight text-white outline-none hover:bg-cosmos-850 focus:bg-cosmos-850"
                   />
+                  {onOpenManual && <ManualButton onClick={onOpenManual} />}
+                  <CoffeeLink />
                   <button
                     type="button"
                     onClick={() => setManagerOpen(true)}
@@ -969,16 +1030,29 @@ export function SequencePanel({
                 const measureOverflowsRow =
                   shareRow && visibleSlots.length > 4
                 const groupBasis = groupRowBasis(steps)
+                const trailingNext =
+                  bar.slots.length > 0 && bar.slots[bar.slots.length - 1] != null
+                    ? suggestNextChords(
+                        chordsBefore(bar, bar.slots.length),
+                        bar.keyRoot,
+                        bar.mode,
+                      )
+                    : null
                 return (
                 <div
                   key={bar.id}
+                  data-group-card=""
                   draggable={!false}
                   title={
                     false ? undefined : 'Drag onto another group to swap'
                   }
-                  onDragStart={(event) =>
+                  onDragStart={(event) => {
+                    if (event.currentTarget.dataset.dragLocked === '1') {
+                      event.preventDefault()
+                      return
+                    }
                     startMeasureDrag(event, section.id, bar.id)
-                  }
+                  }}
                   onDragEnter={allowMeasureDrop}
                   onDragOver={(event) => {
                     allowMeasureDrop(event)
@@ -1138,6 +1212,8 @@ export function SequencePanel({
                     <ProgressionBuilder
                       keyRoot={bar.keyRoot}
                       mode={bar.mode}
+                      matrixCollapsed={matrixCollapsed}
+                      onToggleMatrix={onToggleMatrix}
                       chordSymbols={keyHintSymbols(
                         bar,
                         selected?.barId === bar.id ||
@@ -1150,9 +1226,12 @@ export function SequencePanel({
                           ? pendingProgression.stepId
                           : null
                       }
+                      chordCount={steps}
+                      filledCount={bar.slots.filter((slot) => slot !== null).length}
                       onHarmonyChange={(harmony) =>
                         onSetBarHarmony(bar.id, harmony)
                       }
+                      onGenerate={(choice) => onGenerateProgression(bar.id, choice)}
                       onPickStep={(step) => {
                         if (!song) return
                         const inThisBar =
@@ -1208,6 +1287,15 @@ export function SequencePanel({
                         barId: bar.id,
                         slotIndex,
                       }
+                      const nextPlan =
+                        !slot &&
+                        (slotIndex === 0 || bar.slots[slotIndex - 1] != null)
+                          ? suggestNextChords(
+                              chordsBefore(bar, slotIndex),
+                              bar.keyRoot,
+                              bar.mode,
+                            )
+                          : null
                       const eventIndex = timeline.findIndex(
                         (event) =>
                           event.location !== null &&
@@ -1331,6 +1419,8 @@ export function SequencePanel({
                           }}
                           keyRoot={bar.keyRoot}
                           mode={bar.mode}
+                          nextPlan={nextPlan}
+                          onPickNext={(step) => onPickProgressionStep(location, step)}
                           pendingLabel={
                             pendingProgression &&
                             locationsEqual(pendingProgression.location, location)
@@ -1340,6 +1430,22 @@ export function SequencePanel({
                         />
                       )
                     })}
+                    {trailingNext && (
+                      <NextStepCard
+                        plan={trailingNext}
+                        onPick={(step) => {
+                          const opened = onInsertSlot(
+                            {
+                              sectionId: section.id,
+                              barId: bar.id,
+                              slotIndex: bar.slots.length - 1,
+                            },
+                            'after',
+                          )
+                          if (opened) onPickProgressionStep(opened, step)
+                        }}
+                      />
+                    )}
                   </div>
                     </>
                   )}
@@ -1478,6 +1584,8 @@ interface SlotCellProps {
   onDragOver: () => void
   onDrop: (event: { dataTransfer: DataTransfer }) => void
   pendingLabel?: string | null
+  nextPlan?: NextChordPlan | null
+  onPickNext?: (step: ProgressionStep) => void
   keyRoot?: KeyCenter
   mode?: ModeId
 }
@@ -1525,6 +1633,8 @@ function SlotCell({
   onDragOver,
   onDrop,
   pendingLabel = null,
+  nextPlan = null,
+  onPickNext,
   keyRoot,
   mode,
 }: SlotCellProps) {
@@ -2063,18 +2173,75 @@ function SlotCell({
           )}
         </>
       ) : (
-        <div className="flex flex-1 items-center justify-center">
-          <p
-            className={`text-xs ${
-              pendingLabel ? 'font-semibold text-nebula-300' : 'text-cosmos-600'
-            }`}
-          >
-            {presenting ? '·' : pendingLabel ? pendingLabel : 'empty'}
-          </p>
+        <div className="flex flex-1 items-center justify-center px-1">
+          {pendingLabel && !presenting ? (
+            <p className="text-xs font-semibold text-nebula-300">{pendingLabel}</p>
+          ) : nextPlan && onPickNext && !presenting ? (
+            <NextChordChips plan={nextPlan} onPick={onPickNext} />
+          ) : (
+            <p className="text-xs text-cosmos-600">{presenting ? '·' : 'empty'}</p>
+          )}
         </div>
       )}
     </div>
   )
+}
+
+function NextStepCard({
+  plan,
+  onPick,
+}: {
+  plan: NextChordPlan
+  onPick: (step: ProgressionStep) => void
+}) {
+  return (
+    <div className="relative flex min-h-[200px] min-w-[14rem] flex-col items-center justify-center rounded-xl border border-dashed border-nebula-500/50 bg-nebula-500/5 p-2">
+      <NextChordChips plan={plan} onPick={onPick} />
+    </div>
+  )
+}
+
+function NextChordChips({
+  plan,
+  onPick,
+}: {
+  plan: NextChordPlan
+  onPick: (step: ProgressionStep) => void
+}) {
+  return (
+    <div
+      className="flex w-full flex-col items-center gap-2"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <p className="text-[10px] font-semibold tracking-[0.12em] text-cosmos-500 uppercase">
+        {plan.inferred ? `Next in ${plan.keyRoot}` : 'Next'}
+      </p>
+      <div className="flex flex-wrap justify-center gap-1">
+        {plan.suggestions.map((suggestion) => (
+          <button
+            key={suggestion.step.id}
+            type="button"
+            title={suggestion.reason}
+            onClick={() => onPick(suggestion.step)}
+            className="rounded-md border border-cosmos-700 bg-cosmos-900/80 px-2 py-1 text-sm font-semibold tracking-wide text-white transition hover:border-nebula-500"
+          >
+            {suggestion.step.symbol}
+            <span className="ml-1 text-xs font-medium text-nebula-300">
+              {suggestion.step.roman}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function chordsBefore(bar: Bar, slotIndex: number): string[] {
+  return bar.slots.slice(0, slotIndex).flatMap((slot) => {
+    if (!slot || isLineGroupId(slot.groupId)) return []
+    return [slot.chordSymbol]
+  })
 }
 
 function isMeasureDrag(types: readonly string[]): boolean {

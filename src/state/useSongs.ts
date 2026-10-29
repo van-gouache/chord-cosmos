@@ -12,6 +12,7 @@ import {
 
 import type { Voicing } from '../theory/voicings'
 import type { KeyCenter, ModeId } from '../theory/diatonic'
+import type { GenerateProgressionChoice } from '../theory/generateProgression'
 import {
   MAX_BPM,
   MIN_BPM,
@@ -51,6 +52,7 @@ import {
   saveState,
   setBarSteps,
   setBarHarmony,
+  applyGeneratedProgression,
   setBarName,
   slotFromVoicing,
   stackFromVoicing,
@@ -604,6 +606,16 @@ export function useSongs() {
     [activeSong, updateSong]
   )
 
+  const generateGroupProgression = useCallback(
+    (barId: string, choice: GenerateProgressionChoice) => {
+      if (!activeSong) return
+      updateSong(activeSong.id, (song) =>
+        applyGeneratedProgression(song, barId, choice),
+      )
+    },
+    [activeSong, updateSong],
+  )
+
   const setBarHarmonyBy = useCallback(
     (
       barId: string,
@@ -718,6 +730,7 @@ export function useSongs() {
     setBpm,
     setMeasureSteps,
     setBarHarmony: setBarHarmonyBy,
+    generateGroupProgression,
     renameSong,
     newSong,
     duplicateSong,

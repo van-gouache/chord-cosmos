@@ -184,6 +184,41 @@ export function inversionOrdinal(inversion: number): string {
   ]
 }
 
+const PROGRESSION_GROUPS = [...V_GROUPS].sort((a, b) => {
+  if (a.id === 'V-2') return -1
+  if (b.id === 'V-2') return 1
+  return a.number - b.number
+})
+
+/**
+ * A playable grip for a generated progression. Prefers drop-2, and once a
+ * progression has a position, the next grip sits near that fret.
+ */
+export function defaultProgressionVoicing(
+  chord: ParsedChord,
+  nearFret?: number,
+): Voicing | null {
+  for (const group of PROGRESSION_GROUPS) {
+    const result = generateGroup(chord, group)
+    const voicings = result.inversions.flatMap((inversion) => inversion.voicings)
+    if (voicings.length === 0) continue
+    if (nearFret == null) return result.preview
+    return nearestVoicing(voicings, nearFret)
+  }
+  return null
+}
+
+function nearestVoicing(voicings: readonly Voicing[], nearFret: number): Voicing {
+  return [...voicings].sort((a, b) => {
+    const distance =
+      Math.abs(a.fingering.lowestFret - nearFret) -
+      Math.abs(b.fingering.lowestFret - nearFret)
+    if (distance !== 0) return distance
+    if (a.inversion !== b.inversion) return a.inversion - b.inversion
+    return a.fingering.difficulty - b.fingering.difficulty
+  })[0]
+}
+
 /** Same voicing, moved ±12 frets. Null when the shape would leave the neck. */
 export function shiftVoicing(
   voicing: Voicing,

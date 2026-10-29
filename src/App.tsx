@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ChordInput } from './components/ChordInput'
 import { FretboardBuilder } from './components/FretboardBuilder'
+import { ManualPage } from './components/ManualPage'
 import { SplashScreen } from './components/SplashScreen'
 import { SequencePanel } from './components/SequencePanel'
 import { VGroupGrid } from './components/VGroupGrid'
@@ -26,6 +27,7 @@ import { useSongs } from './state/useSongs'
 import { displayChordSymbol, tryParseChord } from './theory/chords'
 import { isLineGroupId } from './theory/lineOutline'
 import type { ProgressionStep } from './theory/diatonic'
+import type { GenerateProgressionChoice } from './theory/generateProgression'
 import { generateAllTriads, generateTriadGroup, isTriadGroupId, TRIAD_GROUPS_BY_ID } from './theory/triads'
 import { V_GROUPS_BY_ID } from './theory/vsystem'
 import { generateAllGroups, generateGroup, type Voicing } from './theory/voicings'
@@ -46,6 +48,9 @@ export default function App() {
   )
   const [toolbarCollapsed, setToolbarCollapsed] = useState(
     () => loadPrefs().sequenceToolbarCollapsed
+  )
+  const [matrixCollapsed, setMatrixCollapsed] = useState(
+    () => loadPrefs().progressionMatrixCollapsed
   )
   const [volume, setVolume] = useState(() => loadPrefs().volume)
   const [notebookMode, setNotebookMode] = useState(false)
@@ -73,12 +78,45 @@ export default function App() {
     upperSymbol: string | null
     reason: string
   } | null>(null)
-  const [showSplash, setShowSplash] = useState(true)
+  const [manualOpen, setManualOpen] = useState(
+    () => window.location.hash === '#manual',
+  )
+  const [showSplash, setShowSplash] = useState(
+    () => window.location.hash !== '#manual',
+  )
   const rootRef = useRef<HTMLDivElement>(null)
   const usedBrowserFullscreen = useRef(false)
 
   const songs = useSongs()
   useDragAutoScroll()
+
+  const openManual = useCallback(() => {
+    if (window.location.hash !== '#manual') {
+      history.pushState(null, '', '#manual')
+    }
+    setManualOpen(true)
+  }, [])
+
+  const closeManual = useCallback(() => {
+    if (window.location.hash === '#manual') {
+      history.pushState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      )
+    }
+    setManualOpen(false)
+  }, [])
+
+  useEffect(() => {
+    const sync = () => setManualOpen(window.location.hash === '#manual')
+    window.addEventListener('hashchange', sync)
+    window.addEventListener('popstate', sync)
+    return () => {
+      window.removeEventListener('hashchange', sync)
+      window.removeEventListener('popstate', sync)
+    }
+  }, [])
 
   useEffect(() => {
     setMasterVolume(volume)
@@ -371,6 +409,15 @@ export default function App() {
     }
   }
 
+  const handleGenerateProgression = (
+    barId: string,
+    choice: GenerateProgressionChoice,
+  ) => {
+    songs.generateGroupProgression(barId, choice)
+    setPendingProgression(null)
+    setPendingStack(null)
+  }
+
   return (
     <div
       ref={rootRef}
@@ -379,6 +426,10 @@ export default function App() {
     >
       <h1 className="sr-only">Chord Cosmos</h1>
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {manualOpen ? (
+        <ManualPage onClose={closeManual} />
+      ) : (
+      <>
       <div
         className={
           notebookMode
@@ -392,6 +443,7 @@ export default function App() {
             songs={songs.songs}
             slotCount={songs.slotCount}
             notebookMode={notebookMode}
+            onOpenManual={openManual}
             selected={selectedSlot}
             onSelectSlot={setSelectedSlot}
             onSelectSong={(id) => {
@@ -407,9 +459,10 @@ export default function App() {
             onRemoveSlots={songs.removeSlots}
             onInsertSlot={(location, side) => {
               const opened = songs.insertSlot(location, side)
-              if (!opened) return
+              if (!opened) return null
               setSelectedSlot(opened)
               setPendingProgression(null)
+              return opened
             }}
             onRemoveStep={songs.removeStep}
             onMoveSlot={songs.relocateSlot}
@@ -454,6 +507,7 @@ export default function App() {
             onSetBpm={songs.setBpm}
             onSetGroupSteps={songs.setMeasureSteps}
             onSetBarHarmony={songs.setBarHarmony}
+            onGenerateProgression={handleGenerateProgression}
             onPickProgressionStep={handlePickProgressionStep}
             pendingProgression={pendingProgression}
             onClear={songs.clearEntries}
@@ -464,6 +518,13 @@ export default function App() {
             showForwardTargets={showForwardTargets}
             showLickOutline={showLickOutline}
             showCircleOfFifths={showCircleOfFifths}
+            matrixCollapsed={matrixCollapsed}
+            onToggleMatrix={() => {
+              setMatrixCollapsed((collapsed) => {
+                updatePrefs({ progressionMatrixCollapsed: !collapsed })
+                return !collapsed
+              })
+            }}
             onPlayingLocationChange={setPlayingSlot}
             workshopChordSymbol={chord?.symbol ?? input}
             stackSource={pendingStack?.location ?? null}
@@ -794,6 +855,8 @@ export default function App() {
         <div className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-nebula-500/50 bg-cosmos-850 px-5 py-2.5 text-sm font-medium text-white shadow-xl">
           Added to {songs.activeSong?.name}
         </div>
+      )}
+      </>
       )}
     </div>
   )

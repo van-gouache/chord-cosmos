@@ -14,6 +14,8 @@ export interface AppPrefs {
   muteBuildFretClicks: boolean
   /** Hides the sequence toolbar so the grid gets the whole panel. */
   sequenceToolbarCollapsed: boolean
+  /** Hides the per-group chord matrix, leaving key and scale. */
+  progressionMatrixCollapsed: boolean
   notebookStyle: NotebookStyle
   /** Playback level, 0 to 1. */
   volume: number
@@ -25,6 +27,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   showCircleOfFifths: false,
   muteBuildFretClicks: false,
   sequenceToolbarCollapsed: false,
+  progressionMatrixCollapsed: false,
   notebookStyle: DEFAULT_NOTEBOOK_STYLE,
   volume: DEFAULT_VOLUME,
 }
@@ -67,6 +70,10 @@ export function loadPrefs(): AppPrefs {
       typeof raw?.sequenceToolbarCollapsed === 'boolean'
         ? raw.sequenceToolbarCollapsed
         : DEFAULT_PREFS.sequenceToolbarCollapsed,
+    progressionMatrixCollapsed:
+      typeof raw?.progressionMatrixCollapsed === 'boolean'
+        ? raw.progressionMatrixCollapsed
+        : DEFAULT_PREFS.progressionMatrixCollapsed,
     notebookStyle: notebookStyleFromUnknown(raw?.notebookStyle),
     volume: clampVolume(raw?.volume),
   }

@@ -25,8 +25,6 @@ export const QUALITY_GROUPS: QualityGroup[] = [
       { label: '9', suffix: '9', title: 'dominant 9th — R 3 ♭7 9' },
       { label: '11', suffix: '11', title: 'dominant 11th — R 3 ♭7 11' },
       { label: '13', suffix: '13', title: 'dominant 13th — R 3 ♭7 13' },
-      { label: 'sus2', suffix: 'sus2', title: 'suspended 2nd — completed as R 2 4 5' },
-      { label: 'sus4', suffix: 'sus4', title: 'suspended 4th — completed as 7sus4' },
       { label: '7sus2', suffix: '7sus2', title: 'R 2 5 ♭7' },
       { label: '7sus4', suffix: '7sus4', title: 'R 4 5 ♭7' },
       { label: '9sus4', suffix: '9sus4', title: 'R 4 ♭7 9' },
@@ -51,7 +49,6 @@ export const QUALITY_GROUPS: QualityGroup[] = [
   {
     heading: 'Minor',
     chips: [
-      { label: '-', suffix: '-', title: 'minor triad — completed as a minor 7th' },
       { label: '-7', suffix: '-7', title: 'minor 7th — R ♭3 5 ♭7' },
       { label: '-6', suffix: '-6', title: 'minor 6th — R ♭3 5 6' },
       { label: '-Δ7', suffix: '-Δ7', title: 'minor-major 7th — R ♭3 5 7' },
@@ -66,7 +63,6 @@ export const QUALITY_GROUPS: QualityGroup[] = [
   {
     heading: 'Major',
     chips: [
-      { label: 'maj', suffix: '', title: 'major triad — completed as a 6th' },
       { label: 'Δ7', suffix: 'Δ7', title: 'major 7th — R 3 5 7' },
       { label: '6', suffix: '6', title: 'major 6th — R 3 5 6' },
       { label: '6/9', suffix: '6/9', title: 'six-nine — R 3 6 9' },
@@ -80,7 +76,6 @@ export const QUALITY_GROUPS: QualityGroup[] = [
   {
     heading: 'Dim',
     chips: [
-      { label: '°', suffix: '°', title: 'diminished triad — completed as °7' },
       { label: 'ø7', suffix: 'ø7', title: 'half-diminished — R ♭3 ♭5 ♭7' },
       { label: '°7', suffix: '°7', title: 'diminished 7th — R ♭3 ♭5 ♭♭7' },
       { label: '°Δ7', suffix: '°Δ7', title: 'diminished major 7th — R ♭3 ♭5 7' },
@@ -90,7 +85,6 @@ export const QUALITY_GROUPS: QualityGroup[] = [
   {
     heading: 'Aug',
     chips: [
-      { label: '+', suffix: '+', title: 'augmented triad — completed as 7♯5' },
       { label: '7♯5', suffix: '7♯5', title: 'R 3 ♯5 ♭7' },
       { label: 'Δ7♯5', suffix: 'Δ7♯5', title: 'augmented major 7th — R 3 ♯5 7' },
     ],
